@@ -385,11 +385,174 @@ async function saveConversationEdit(id) {
   }
 }
 
+// Modal viewer state
+let modalState = {
+  isOpen: false,
+  currentConversationId: null,
+  currentIndex: 0,
+  filteredConversations: [],
+  isFullscreen: false
+};
+
 function viewConversation(id) {
-  const path = location.pathname;
-  const dir = path.slice(0, path.lastIndexOf('/') + 1);
-  const rel = (dir === '/' ? '' : dir.slice(1)) + 'viewer.html?id=' + encodeURIComponent(id);
-  chrome.tabs.create({ url: chrome.runtime.getURL(rel) });
+  openConversationModal(id);
+}
+
+async function openConversationModal(conversationId) {
+  // Get current filtered conversations for navigation
+  modalState.filteredConversations = getFilteredConversations();
+  modalState.currentIndex = modalState.filteredConversations.findIndex(c => c.id === conversationId);
+  modalState.currentConversationId = conversationId;
+  modalState.isOpen = true;
+  
+  // Show modal
+  const modal = document.getElementById('conversationModal');
+  modal.style.display = 'flex';
+  setTimeout(() => modal.classList.add('show'), 10);
+  
+  // Load conversation content
+  await loadConversationInModal(conversationId);
+  updateModalNavigation();
+  
+  // Focus management
+  document.getElementById('closeConversationModal').focus();
+}
+
+async function loadConversationInModal(conversationId) {
+  try {
+    // Load both markdown and raw view
+    const [mdResponse, rawResponse] = await Promise.all([
+      chrome.runtime.sendMessage({ type: 'GET_CONVERSATION_MD', id: conversationId }),
+      chrome.runtime.sendMessage({ type: 'GET_CONVERSATION_RAW', id: conversationId })
+    ]);
+    
+    if (mdResponse.md && rawResponse.html) {
+      // Populate content
+      document.getElementById('modalMarkdown').value = mdResponse.md;
+      document.getElementById('modalRendered').innerHTML = renderHtmlFromMd(mdResponse.md);
+      document.getElementById('modalRaw').innerHTML = rawResponse.html;
+      
+      // Update title
+      const conversation = modalState.filteredConversations[modalState.currentIndex];
+      document.getElementById('modalConversationTitle').textContent = conversation?.title || 'Conversation';
+    }
+  } catch (error) {
+    console.error('Failed to load conversation:', error);
+    document.getElementById('modalRaw').innerHTML = `<div class="error">Failed to load conversation: ${error.message}</div>`;
+  }
+}
+
+function updateModalNavigation() {
+  const total = modalState.filteredConversations.length;
+  const current = modalState.currentIndex + 1;
+  
+  // Update position indicator
+  document.getElementById('conversationPosition').textContent = `${current} of ${total}`;
+  
+  // Update navigation buttons
+  document.getElementById('prevConversation').disabled = modalState.currentIndex <= 0;
+  document.getElementById('nextConversation').disabled = modalState.currentIndex >= total - 1;
+}
+
+function getFilteredConversations() {
+  // Get current search/filter state
+  const query = document.getElementById('q').value.toLowerCase();
+  const sortBy = document.getElementById('sortBy').value;
+  
+  let filtered = conversations.filter(conv => {
+    // Apply folder filter
+    if (currentFolder && conv.folder !== currentFolder) return false;
+    
+    // Apply search filter
+    if (query && rank(conv, query) === 0) return false;
+    
+    return true;
+  });
+  
+  // Apply sorting
+  if (sortBy === 'updated-desc') {
+    filtered.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+  } else if (sortBy === 'updated-asc') {
+    filtered.sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""));
+  } else if (sortBy === 'title-asc') {
+    filtered.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+  } else if (sortBy === 'title-desc') {
+    filtered.sort((a, b) => (b.title || "").localeCompare(a.title || ""));
+  }
+  
+  return filtered;
+}
+
+function closeConversationModal() {
+  const modal = document.getElementById('conversationModal');
+  modal.classList.remove('show');
+  
+  setTimeout(() => {
+    modal.style.display = 'none';
+    modalState.isOpen = false;
+    modalState.currentConversationId = null;
+  }, 200);
+}
+
+async function navigateConversation(direction) {
+  const newIndex = modalState.currentIndex + direction;
+  const total = modalState.filteredConversations.length;
+  
+  if (newIndex >= 0 && newIndex < total) {
+    modalState.currentIndex = newIndex;
+    const newConversation = modalState.filteredConversations[newIndex];
+    modalState.currentConversationId = newConversation.id;
+    
+    await loadConversationInModal(newConversation.id);
+    updateModalNavigation();
+  }
+}
+
+function toggleModalFullscreen() {
+  const modalContent = document.querySelector('.conversation-modal-content');
+  modalState.isFullscreen = !modalState.isFullscreen;
+  
+  if (modalState.isFullscreen) {
+    modalContent.classList.add('fullscreen');
+  } else {
+    modalContent.classList.remove('fullscreen');
+  }
+}
+
+function switchModalViewMode(mode) {
+  // Hide all views
+  document.getElementById('modalRaw').style.display = 'none';
+  document.getElementById('modalRendered').style.display = 'none';
+  document.getElementById('modalMarkdown').style.display = 'none';
+  
+  // Show selected view
+  const targetElement = mode === 'raw' ? 'modalRaw' : 
+                       mode === 'rendered' ? 'modalRendered' : 'modalMarkdown';
+  document.getElementById(targetElement).style.display = 'block';
+}
+
+// Utility function from viewer.js
+function renderHtmlFromMd(md) {
+  const lines = md.split(/\r?\n/);
+  const out = [];
+  let inCode = false;
+  for (let line of lines) {
+    if (line.startsWith('```')) {
+      inCode = !inCode;
+      out.push(inCode ? '<pre><code>' : '</code></pre>');
+      continue;
+    }
+    if (inCode) { 
+      out.push(line.replace(/</g, '&lt;').replace(/>/g, '&gt;')); 
+      continue; 
+    }
+    if (line.startsWith('# ')) out.push(`<h1>${line.slice(2).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h1>`);
+    else if (line.startsWith('## ')) out.push(`<h2>${line.slice(3).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h2>`);
+    else if (line.startsWith('### ')) out.push(`<h3>${line.slice(4).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h3>`);
+    else if (line.trim().length === 0) out.push('<br/>');
+    else out.push(`<p>${line.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`);
+  }
+  return out.join('\n');
 }
 
 async function exportConversation(id) {
@@ -625,6 +788,62 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('sqlQuery')?.addEventListener('click', () => {
     window.location.href = 'query.html';
   });
+
+  // Modal conversation viewer controls
+  document.getElementById('closeConversationModal')?.addEventListener('click', closeConversationModal);
+  document.getElementById('prevConversation')?.addEventListener('click', () => navigateConversation(-1));
+  document.getElementById('nextConversation')?.addEventListener('click', () => navigateConversation(1));
+  document.getElementById('toggleFullscreen')?.addEventListener('click', toggleModalFullscreen);
+  
+  document.getElementById('modalViewMode')?.addEventListener('change', (e) => {
+    switchModalViewMode(e.target.value);
+  });
+  
+  document.getElementById('modalExportMd')?.addEventListener('click', async () => {
+    if (modalState.currentConversationId) {
+      try {
+        const res = await chrome.runtime.sendMessage({ 
+          type: 'EXPORT_CONVERSATION_MD', 
+          id: modalState.currentConversationId 
+        });
+        if (res?.ok === false) {
+          alert(res.error || 'Export failed');
+        }
+      } catch (error) {
+        alert('Export failed: ' + error.message);
+      }
+    }
+  });
+
+  // Modal keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (!modalState.isOpen) return;
+    
+    switch (e.key) {
+      case 'Escape':
+        closeConversationModal();
+        break;
+      case 'ArrowLeft':
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          navigateConversation(-1);
+        }
+        break;
+      case 'ArrowRight':
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          navigateConversation(1);
+        }
+        break;
+      case 'F11':
+        e.preventDefault();
+        toggleModalFullscreen();
+        break;
+    }
+  });
+
+  // Modal backdrop click to close
+  document.querySelector('.modal-backdrop')?.addEventListener('click', closeConversationModal);
   
   // Bulk operations
   document.getElementById('bulkOperations')?.addEventListener('click', () => {

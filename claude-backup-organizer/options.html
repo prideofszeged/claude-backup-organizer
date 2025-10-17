@@ -94,6 +94,38 @@
     </div>
   </div>
 
+  <!-- Conversation Viewer Modal -->
+  <div id="conversationModal" class="conversation-modal" style="display:none">
+    <div class="modal-backdrop"></div>
+    <div class="conversation-modal-content">
+      <div class="conversation-modal-header">
+        <div class="modal-title-section">
+          <h2 id="modalConversationTitle">Conversation</h2>
+          <div class="modal-navigation">
+            <button id="prevConversation" class="nav-btn" title="Previous conversation">←</button>
+            <span id="conversationPosition" class="position-indicator">1 of 10</span>
+            <button id="nextConversation" class="nav-btn" title="Next conversation">→</button>
+          </div>
+        </div>
+        <div class="modal-controls">
+          <select id="modalViewMode" class="modal-view-select">
+            <option value="raw">Raw View</option>
+            <option value="rendered">Rendered</option>
+            <option value="markdown">Markdown</option>
+          </select>
+          <button id="modalExportMd" class="modal-btn" title="Export Markdown">📤 Export</button>
+          <button id="toggleFullscreen" class="modal-btn" title="Toggle fullscreen">⛶</button>
+          <button id="closeConversationModal" class="modal-close" title="Close">✕</button>
+        </div>
+      </div>
+      <div class="conversation-modal-body">
+        <article id="modalRaw" class="modal-raw-view"></article>
+        <article id="modalRendered" class="modal-rendered" style="display:none"></article>
+        <textarea id="modalMarkdown" class="modal-markdown" style="display:none"></textarea>
+      </div>
+    </div>
+  </div>
+
   <section class="debug">
     <div class="row">
       <label><input type="checkbox" id="debugToggle"/> Show debug log</label>
