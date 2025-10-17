@@ -390,6 +390,10 @@ async function incrementalSync() {
     throw error;
   } finally {
     endSync();
+    // Update last sync time for stats
+    try {
+      await chrome.storage.local.set({ lastSyncTime: new Date().toISOString() });
+    } catch (_) {}
   }
 }
 
@@ -597,6 +601,39 @@ async function testSync() {
   }
 }
 
+// Window management for pop-out library
+async function popOutLibrary() {
+  try {
+    // Get saved window dimensions or use defaults
+    const { windowState = {} } = await chrome.storage.local.get(['windowState']);
+    const defaultDimensions = {
+      width: 1200,
+      height: 800,
+      left: 100,
+      top: 100
+    };
+    
+    const dimensions = { ...defaultDimensions, ...windowState };
+    
+    // Create the window with full mode parameter
+    const window = await chrome.windows.create({
+      url: chrome.runtime.getURL('options.html?mode=full'),
+      type: 'popup',
+      width: dimensions.width,
+      height: dimensions.height,
+      left: dimensions.left,
+      top: dimensions.top,
+      focused: true
+    });
+    
+    await logDebug('info', `Pop-out library opened in window ${window.id}`);
+    return { ok: true, windowId: window.id };
+  } catch (e) {
+    await logDebug('error', `Failed to pop out library: ${e?.message || e}`);
+    throw e;
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     switch (msg?.type) {
@@ -668,6 +705,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         break;
       case "DELETE_CONVERSATION":
         sendResponse(await deleteConversation(msg.id, msg.options || {}));
+        break;
+      case "POP_OUT_LIBRARY":
+        try {
+          sendResponse(await popOutLibrary());
+        } catch (e) {
+          await logDebug('error', `Pop out error: ${e?.message || e}`);
+          sendResponse({ ok: false, error: e?.message || String(e) });
+        }
         break;
       default:
         sendResponse({ ok: false, error: "Unknown message" });

@@ -9,17 +9,22 @@
   <header>
     <h2>Claude Library</h2>
     <div class="right">
-      <button id="sqlQuery" title="Open SQL Query Interface">SQL Query</button>
-      <button id="syncInc">Sync</button>
-      <button id="syncFull">Full Sync</button>
-      <button id="syncTest" title="Minimal connectivity check">Test</button>
-      <button id="syncStop" title="Abort running sync">Stop</button>
-      <button id="refreshLibrary" title="Refresh conversation library">Refresh</button>
-      <button id="exportIndex">Export JSON</button>
-      <button id="exportCsv">Export CSV</button>
-      <button id="deleteSettings" title="Configure deletion behavior">⚙️ Delete Settings</button>
-      <label class="importBtn">Import Index<input id="importFile" type="file" accept="application/json" hidden></label>
-      <label style="margin-left:10px"><input type="checkbox" id="downloadDuringSync"/> Save to disk during sync</label>
+      <button id="popOutLibrary" title="Open library in persistent window">📤 Pop Out</button>
+      <div class="sync-controls">
+        <button id="syncInc">Sync</button>
+        <button id="syncFull" title="Force re-download">Full</button>
+        <button id="syncTest" title="Test connection">Test</button>
+        <button id="syncStop" title="Stop sync">Stop</button>
+      </div>
+      <div class="advanced-controls">
+        <button id="sqlQuery" title="SQL Query">SQL</button>
+        <button id="refreshLibrary" title="Refresh">🔄</button>
+        <button id="exportIndex" title="Export JSON">JSON</button>
+        <button id="exportCsv" title="Export CSV">CSV</button>
+        <button id="deleteSettings" title="Delete Settings">⚙️</button>
+        <label class="importBtn" title="Import Index">📁<input id="importFile" type="file" accept="application/json" hidden></label>
+        <label class="download-checkbox"><input type="checkbox" id="downloadDuringSync"/> Save files</label>
+      </div>
     </div>
   </header>
 

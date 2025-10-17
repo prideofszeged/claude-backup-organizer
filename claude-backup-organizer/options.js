@@ -717,9 +717,53 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// Context detection
+function detectDisplayMode() {
+  // Check URL parameters first for explicit mode
+  const urlParams = new URLSearchParams(window.location.search);
+  const explicitMode = urlParams.get('mode');
+  
+  if (explicitMode === 'popup' || explicitMode === 'full') {
+    return explicitMode;
+  }
+  
+  // Check if we're in a popup (small constrained window)
+  const isPopup = window.outerWidth <= 500 || window.outerHeight <= 700;
+  return isPopup ? 'popup' : 'full';
+}
+
+function applyDisplayMode(mode) {
+  document.body.classList.remove('popup-mode', 'full-mode');
+  document.body.classList.add(mode + '-mode');
+  
+  // Store mode for potential use
+  document.body.dataset.displayMode = mode;
+}
+
+// Handle focus parameter for search
+function handleSearchFocus() {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('focus') === 'search') {
+    setTimeout(() => {
+      const searchInput = document.getElementById('q');
+      if (searchInput) {
+        searchInput.focus();
+        searchInput.scrollIntoView();
+      }
+    }, 100);
+  }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+  // Detect and apply display mode first
+  const displayMode = detectDisplayMode();
+  applyDisplayMode(displayMode);
+  
   await loadData();
+  
+  // Handle search focus if needed
+  handleSearchFocus();
   
   // Set default folder
   currentFolder = 'Inbox';
@@ -865,6 +909,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   document.getElementById('deleteSettings')?.addEventListener('click', openDeleteSettingsModal);
+  
+  document.getElementById('popOutLibrary')?.addEventListener('click', async () => {
+    try {
+      await chrome.runtime.sendMessage({ type: 'POP_OUT_LIBRARY' });
+      // Close popup after opening full window
+      if (document.body.dataset.displayMode === 'popup') {
+        window.close();
+      }
+    } catch (e) {
+      console.error('Pop out error:', e);
+      alert('Failed to pop out library. Check if extension is properly loaded.');
+    }
+  });
 
   // Modal conversation viewer controls
   document.getElementById('closeConversationModal')?.addEventListener('click', closeConversationModal);

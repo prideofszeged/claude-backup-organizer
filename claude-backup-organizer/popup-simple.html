@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="popup-simple">
+  <header class="popup-header">
+    <h1>Claude Library</h1>
+    <p class="subtitle">Manage and organize your Claude AI conversations</p>
+  </header>
+
+  <main class="action-cards">
+    <div class="action-card" id="quickSearchCard">
+      <div class="card-icon">🔍</div>
+      <div class="card-content">
+        <h3>Quick Search</h3>
+        <p>Find conversations by title or content</p>
+      </div>
+      <div class="card-arrow">→</div>
+    </div>
+
+    <div class="action-card" id="syncCard">
+      <div class="card-icon">💾</div>
+      <div class="card-content">
+        <h3>Sync Conversations</h3>
+        <p>Update your library with latest chats</p>
+      </div>
+      <div class="card-arrow">→</div>
+    </div>
+
+    <div class="action-card" id="fullLibraryCard">
+      <div class="card-icon">📚</div>
+      <div class="card-content">
+        <h3>Open Full Library</h3>
+        <p>Access all conversations and features</p>
+      </div>
+      <div class="card-arrow">→</div>
+    </div>
+  </main>
+
+  <footer class="library-stats">
+    <h4>LIBRARY STATS</h4>
+    <div class="stats-grid">
+      <div class="stat">
+        <div class="stat-number" id="conversationCount">-</div>
+        <div class="stat-label">Conversations</div>
+      </div>
+      <div class="stat">
+        <div class="stat-number" id="folderCount">-</div>
+        <div class="stat-label">Folders</div>
+      </div>
+      <div class="stat">
+        <div class="stat-number" id="lastSync">-</div>
+        <div class="stat-label">Last Sync</div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Sync Progress Overlay -->
+  <div id="syncOverlay" class="sync-overlay" style="display: none;">
+    <div class="sync-content">
+      <div class="sync-icon">⚡</div>
+      <h3 id="syncStatus">Syncing...</h3>
+      <div class="progress-bar">
+        <div id="syncProgressFill" class="progress-fill"></div>
+      </div>
+      <p id="syncDetails">Preparing...</p>
+      <button id="syncStop" class="sync-stop-btn">Stop Sync</button>
+    </div>
+  </div>
+
+  <script src="popup-simple.js"></script>
+</body>
+</html>
