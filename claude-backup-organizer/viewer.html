@@ -1,0 +1,27 @@
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="viewer">
+  <header>
+    <h2 id="title">Conversation</h2>
+    <div class="right">
+      <button id="exportMd">Export Markdown</button>
+    </div>
+  </header>
+  <section class="controls">
+    <select id="mode">
+      <option value="rendered">Rendered</option>
+      <option value="markdown">Markdown</option>
+    </select>
+  </section>
+  <main>
+    <article id="rendered" class="rendered"></article>
+    <textarea id="markdown" class="markdown" style="display:none"></textarea>
+  </main>
+  <script src="viewer.js"></script>
+</body>
+</html>

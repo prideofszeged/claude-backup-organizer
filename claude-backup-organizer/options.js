@@ -1,0 +1,706 @@
+// State management
+let conversations = [];
+let folders = { 'Inbox': { children: {}, color: '#61dafb' } };
+let tags = {};
+let selectedConversations = new Set();
+let currentFolder = null;
+
+function strIncludes(hay, needle) {
+  return (hay || "").toLowerCase().includes((needle || "").toLowerCase());
+}
+
+function rank(item, q) {
+  const t = [item.title, (item.tags||[]).join(" "), item.notes||""];
+  return t.reduce((s, f) => s + (strIncludes(f, q) ? 1 : 0), 0);
+}
+
+async function loadData() {
+  const { index = [], folderStructure = {}, tagColors = {} } = await chrome.storage.local.get(["index", "folderStructure", "tagColors"]);
+  conversations = index;
+  folders = Object.keys(folderStructure).length > 0 ? folderStructure : { 'Inbox': { children: {}, color: '#61dafb' } };
+  tags = tagColors;
+  
+  // Migrate conversations without folders to Inbox
+  conversations.forEach(conv => {
+    if (!conv.folder) conv.folder = 'Inbox';
+  });
+}
+
+async function saveData() {
+  await chrome.storage.local.set({ 
+    index: conversations, 
+    folderStructure: folders,
+    tagColors: tags
+  });
+}
+
+// Folder management
+function createFolder(name, parent = null) {
+  const parentObj = parent ? getFolder(parent) : folders;
+  if (!parentObj) return false;
+  
+  parentObj.children = parentObj.children || {};
+  parentObj.children[name] = { children: {}, color: '#61dafb' };
+  return true;
+}
+
+function getFolder(path) {
+  if (!path || path === 'Inbox') return folders['Inbox'];
+  
+  const parts = path.split('/');
+  let current = folders;
+  
+  for (const part of parts) {
+    if (!current[part]) return null;
+    current = current[part].children || {};
+  }
+  return current;
+}
+
+function getAllFolderPaths() {
+  const paths = ['Inbox'];
+  
+  function traverse(obj, prefix = '') {
+    Object.keys(obj).forEach(key => {
+      if (key !== 'Inbox') {
+        const path = prefix ? `${prefix}/${key}` : key;
+        paths.push(path);
+        if (obj[key].children) {
+          traverse(obj[key].children, path);
+        }
+      }
+    });
+  }
+  
+  traverse(folders.Inbox.children);
+  Object.keys(folders).forEach(key => {
+    if (key !== 'Inbox') {
+      paths.push(key);
+      if (folders[key].children) {
+        traverse(folders[key].children, key);
+      }
+    }
+  });
+  
+  return paths;
+}
+
+// UI Rendering
+function renderFolderTree() {
+  const container = document.getElementById('folderTree');
+  container.innerHTML = '';
+  
+  function renderFolderItem(name, folderObj, path, level = 0) {
+    const div = document.createElement('div');
+    div.className = `tree-item ${currentFolder === path ? 'selected' : ''}`;
+    div.style.marginLeft = `${level * 16}px`;
+    
+    const count = conversations.filter(c => c.folder === path).length;
+    
+    div.innerHTML = `
+      <div class="folder-name">
+        <span class="folder-icon">📁</span>
+        <span>${name}</span>
+        <span class="folder-count">(${count})</span>
+        <div class="folder-actions">
+          <button class="small-btn add-subfolder-btn" data-folder-path="${path}">+</button>
+          ${path !== 'Inbox' ? `<button class="small-btn delete-folder-btn" data-folder-path="${path}">×</button>` : ''}
+        </div>
+      </div>
+    `;
+    
+    // Add event listeners
+    const addBtn = div.querySelector('.add-subfolder-btn');
+    if (addBtn) {
+      addBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        addSubfolder(path);
+      });
+    }
+    
+    const deleteBtn = div.querySelector('.delete-folder-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteFolder(path);
+      });
+    }
+    
+    div.addEventListener('click', (e) => {
+      if (e.target.classList.contains('small-btn')) return;
+      selectFolder(path);
+    });
+    
+    container.appendChild(div);
+    
+    // Render children
+    if (folderObj.children) {
+      Object.keys(folderObj.children).forEach(childName => {
+        const childPath = path === 'Inbox' ? childName : `${path}/${childName}`;
+        renderFolderItem(childName, folderObj.children[childName], childPath, level + 1);
+      });
+    }
+  }
+  
+  renderFolderItem('Inbox', folders.Inbox, 'Inbox');
+  
+  Object.keys(folders).forEach(key => {
+    if (key !== 'Inbox') {
+      renderFolderItem(key, folders[key], key);
+    }
+  });
+}
+
+function renderConversations() {
+  const container = document.getElementById('conversationGrid');
+  const countEl = document.getElementById('conversationCount');
+  
+  let filtered = conversations;
+  
+  // Filter by folder
+  if (currentFolder !== null) {
+    filtered = filtered.filter(c => c.folder === currentFolder);
+  }
+  
+  // Search filter
+  const query = document.getElementById('q').value;
+  if (query) {
+    filtered = filtered.map(x => ({x, s: rank(x, query)}))
+                     .filter(y => y.s > 0)
+                     .sort((a, b) => b.s - a.s)
+                     .map(y => y.x);
+  }
+  
+  // Sort
+  const sortBy = document.getElementById('sortBy').value;
+  filtered.sort((a, b) => {
+    switch(sortBy) {
+      case 'updated-desc': return new Date(b.updatedAt) - new Date(a.updatedAt);
+      case 'updated-asc': return new Date(a.updatedAt) - new Date(b.updatedAt);
+      case 'title-asc': return a.title.localeCompare(b.title);
+      case 'title-desc': return b.title.localeCompare(a.title);
+      default: return 0;
+    }
+  });
+  
+  countEl.textContent = `${filtered.length} conversation${filtered.length !== 1 ? 's' : ''}`;
+  
+  container.innerHTML = '';
+  
+  filtered.forEach(conv => {
+    const card = document.createElement('div');
+    card.className = `conversation-card ${selectedConversations.has(conv.id) ? 'selected' : ''}`;
+    
+    const tagHtml = (conv.tags || []).map(tag => {
+      const color = tags[tag] || '#61dafb';
+      return `<span class="tag" style="background-color: ${color}; color: ${getContrastColor(color)}">${tag}</span>`;
+    }).join('');
+    
+    card.innerHTML = `
+      <input type="checkbox" class="checkbox" ${selectedConversations.has(conv.id) ? 'checked' : ''} 
+             data-conv-id="${conv.id}">
+      <div class="title">${conv.title}</div>
+      <div class="meta">${conv.updatedAt || 'No date'}</div>
+      <div class="tags">${tagHtml}</div>
+      <div class="notes">${conv.notes || ''}</div>
+      <div class="actions">
+        <button class="edit-btn" data-conv-id="${conv.id}">Edit</button>
+        <button class="view-btn" data-conv-id="${conv.id}">View</button>
+        <button class="export-btn" data-conv-id="${conv.id}">Export</button>
+      </div>
+    `;
+    
+    // Add event listeners to the card elements
+    const checkbox = card.querySelector('.checkbox');
+    checkbox.addEventListener('change', (e) => {
+      toggleSelection(conv.id, e.target.checked);
+    });
+    
+    const editBtn = card.querySelector('.edit-btn');
+    editBtn.addEventListener('click', () => editConversation(conv.id));
+    
+    const viewBtn = card.querySelector('.view-btn');  
+    viewBtn.addEventListener('click', () => viewConversation(conv.id));
+    
+    const exportBtn = card.querySelector('.export-btn');
+    exportBtn.addEventListener('click', () => exportConversation(conv.id));
+    
+    container.appendChild(card);
+  });
+}
+
+function getContrastColor(bgColor) {
+  const hex = bgColor.replace('#', '');
+  const r = parseInt(hex.substr(0, 2), 16);
+  const g = parseInt(hex.substr(2, 2), 16);
+  const b = parseInt(hex.substr(4, 2), 16);
+  const brightness = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  return brightness > 128 ? '#000000' : '#ffffff';
+}
+
+// Event handlers
+function selectFolder(path) {
+  currentFolder = path;
+  document.querySelectorAll('.tree-item').forEach(el => el.classList.remove('selected'));
+  event.target.closest('.tree-item').classList.add('selected');
+  selectedConversations.clear();
+  renderConversations();
+}
+
+function toggleSelection(id, checked) {
+  if (checked) {
+    selectedConversations.add(id);
+  } else {
+    selectedConversations.delete(id);
+  }
+  renderConversations();
+}
+
+function addSubfolder(parentPath) {
+  const name = prompt('Folder name:');
+  if (!name) return;
+  
+  const fullPath = parentPath === 'Inbox' ? name : `${parentPath}/${name}`;
+  if (getAllFolderPaths().includes(fullPath)) {
+    alert('Folder already exists');
+    return;
+  }
+  
+  createFolder(name, parentPath === 'Inbox' ? null : parentPath);
+  saveData();
+  renderFolderTree();
+}
+
+function deleteFolder(path) {
+  if (!confirm(`Delete folder "${path}"? Conversations will be moved to Inbox.`)) return;
+  
+  // Move conversations to Inbox
+  conversations.forEach(conv => {
+    if (conv.folder === path || conv.folder?.startsWith(path + '/')) {
+      conv.folder = 'Inbox';
+    }
+  });
+  
+  // Remove folder from structure
+  const parts = path.split('/');
+  if (parts.length === 1) {
+    delete folders[parts[0]];
+  } else {
+    let current = folders;
+    for (let i = 0; i < parts.length - 1; i++) {
+      current = current[parts[i]].children;
+    }
+    delete current[parts[parts.length - 1]];
+  }
+  
+  if (currentFolder === path || currentFolder?.startsWith(path + '/')) {
+    currentFolder = 'Inbox';
+  }
+  
+  saveData();
+  renderFolderTree();
+  renderConversations();
+}
+
+async function editConversation(id) {
+  const conv = conversations.find(c => c.id === id);
+  if (!conv) return;
+  
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h3>Edit Conversation</h3>
+      <label>Folder:</label>
+      <select id="editFolder">
+        ${getAllFolderPaths().map(path => 
+          `<option value="${path}" ${conv.folder === path ? 'selected' : ''}>${path}</option>`
+        ).join('')}
+      </select>
+      <label>Tags (comma-separated):</label>
+      <input id="editTags" value="${(conv.tags || []).join(', ')}" />
+      <label>Notes:</label>
+      <textarea id="editNotes">${conv.notes || ''}</textarea>
+      <div style="margin-top: 16px;">
+        <button class="save-conversation-btn" data-conv-id="${id}">Save</button>
+        <button class="cancel-modal-btn">Cancel</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Add event listeners to modal buttons
+  const saveBtn = modal.querySelector('.save-conversation-btn');
+  saveBtn.addEventListener('click', () => saveConversationEdit(id));
+  
+  const cancelBtn = modal.querySelector('.cancel-modal-btn');
+  cancelBtn.addEventListener('click', closeModal);
+}
+
+async function saveConversationEdit(id) {
+  try {
+    const newFolder = document.getElementById('editFolder').value;
+    const newTags = document.getElementById('editTags').value.split(',').map(s => s.trim()).filter(Boolean);
+    const newNotes = document.getElementById('editNotes').value;
+    
+    // Update via background script
+    const res = await chrome.runtime.sendMessage({ 
+      type: 'UPDATE_META', 
+      id, 
+      payload: { 
+        folder: newFolder,
+        tags: newTags, 
+        notes: newNotes 
+      } 
+    });
+    
+    if (res?.ok === false) {
+      alert(res.error || 'Failed to save');
+      return;
+    }
+    
+    // Update local data
+    const conv = conversations.find(c => c.id === id);
+    if (conv) {
+      conv.folder = newFolder;
+      conv.tags = newTags;
+      conv.notes = newNotes;
+      
+      // Add new tags to tag registry
+      newTags.forEach(tag => {
+        if (!tags[tag]) {
+          tags[tag] = '#61dafb';
+        }
+      });
+    }
+    
+    await saveData();
+    closeModal();
+    renderFolderTree();
+    renderConversations();
+  } catch (e) {
+    console.error('Save conversation error:', e);
+    alert('Save failed. Check if extension is properly loaded.');
+  }
+}
+
+function viewConversation(id) {
+  const path = location.pathname;
+  const dir = path.slice(0, path.lastIndexOf('/') + 1);
+  const rel = (dir === '/' ? '' : dir.slice(1)) + 'viewer.html?id=' + encodeURIComponent(id);
+  chrome.tabs.create({ url: chrome.runtime.getURL(rel) });
+}
+
+async function exportConversation(id) {
+  try {
+    const res = await chrome.runtime.sendMessage({ type: 'EXPORT_CONVERSATION_MD', id });
+    if (res?.ok === false) alert(res.error || 'Export failed');
+  } catch (e) {
+    console.error('Export error:', e);
+    alert('Export failed. Check if extension is properly loaded.');
+  }
+}
+
+function closeModal() {
+  document.querySelectorAll('.modal').forEach(modal => modal.remove());
+}
+
+// Progress handling
+function updateSyncProgress(progress) {
+  const progressSection = document.getElementById('syncProgress');
+  const statusText = document.getElementById('syncStatusText');
+  const progressText = document.getElementById('syncProgressText');
+  const progressFill = document.getElementById('progressFill');
+  const detailsDiv = document.getElementById('syncDetails');
+  
+  if (progress.phase === 'starting' || progress.phase === 'fetching' || progress.phase === 'downloading') {
+    progressSection.style.display = 'block';
+    statusText.textContent = progress.message;
+    
+    if (progress.total > 0) {
+      const percentage = Math.round((progress.current / progress.total) * 100);
+      progressText.textContent = `${progress.current}/${progress.total} (${percentage}%)`;
+      progressFill.style.width = `${percentage}%`;
+      
+      if (progress.currentItem) {
+        const detailLine = document.createElement('div');
+        detailLine.className = 'detail-line';
+        detailLine.textContent = `${progress.current}/${progress.total}: ${progress.currentItem}`;
+        detailsDiv.appendChild(detailLine);
+        
+        // Keep only last 5 details
+        while (detailsDiv.children.length > 5) {
+          detailsDiv.removeChild(detailsDiv.firstChild);
+        }
+        
+        // Auto-scroll to bottom
+        detailsDiv.scrollTop = detailsDiv.scrollHeight;
+      }
+    } else {
+      progressText.textContent = 'Preparing...';
+      progressFill.style.width = '0%';
+    }
+  } else if (progress.phase === 'completed') {
+    statusText.textContent = progress.message;
+    progressText.textContent = 'Complete!';
+    progressFill.style.width = '100%';
+    
+    // Auto-hide after 3 seconds
+    setTimeout(() => {
+      progressSection.style.display = 'none';
+      detailsDiv.innerHTML = '';
+      
+      // Refresh the conversation list
+      loadData().then(() => {
+        renderFolderTree();
+        renderConversations();
+      });
+    }, 3000);
+  } else if (progress.phase === 'error') {
+    statusText.textContent = progress.message;
+    progressText.textContent = 'Error';
+    progressFill.style.width = '0%';
+    progressFill.style.background = '#e74c3c';
+    
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+      progressSection.style.display = 'none';
+      detailsDiv.innerHTML = '';
+      progressFill.style.background = 'linear-gradient(90deg, var(--accent), #4ecdc4)';
+    }, 5000);
+  }
+}
+
+// Listen for progress messages
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'SYNC_PROGRESS') {
+    updateSyncProgress(message.progress);
+  }
+});
+
+// Initialize
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadData();
+  
+  // Set default folder
+  currentFolder = 'Inbox';
+  
+  renderFolderTree();
+  renderConversations();
+  
+  // Check for any ongoing sync progress
+  try {
+    const { syncProgress } = await chrome.storage.local.get(['syncProgress']);
+    if (syncProgress && !syncProgress.completed && !syncProgress.error) {
+      updateSyncProgress(syncProgress);
+    }
+  } catch (_) {
+    // Ignore storage errors
+  }
+  
+  // Event listeners
+  document.getElementById('q').addEventListener('input', renderConversations);
+  document.getElementById('sortBy').addEventListener('change', renderConversations);
+  
+  document.getElementById('addFolder').addEventListener('click', () => {
+    addSubfolder('Inbox');
+  });
+  
+  document.getElementById('selectAll').addEventListener('click', () => {
+    const filtered = conversations.filter(c => currentFolder === null || c.folder === currentFolder);
+    const allSelected = filtered.every(c => selectedConversations.has(c.id));
+    
+    if (allSelected) {
+      filtered.forEach(c => selectedConversations.delete(c.id));
+    } else {
+      filtered.forEach(c => selectedConversations.add(c.id));
+    }
+    renderConversations();
+  });
+  
+  // Legacy sync buttons with error handling
+  document.getElementById('syncInc')?.addEventListener('click', async () => {
+    try {
+      // Clear any previous progress
+      document.getElementById('syncProgress').style.display = 'none';
+      document.getElementById('syncDetails').innerHTML = '';
+      
+      const response = await chrome.runtime.sendMessage({ type: 'SYNC_INCREMENTAL' });
+      if (response?.ok === false) {
+        alert(`Sync error: ${response.error}`);
+      }
+    } catch (e) {
+      console.error('Sync error:', e);
+      alert('Sync failed. Check if extension is properly loaded.');
+    }
+  });
+  
+  document.getElementById('syncFull')?.addEventListener('click', async () => {
+    try {
+      // Clear any previous progress
+      document.getElementById('syncProgress').style.display = 'none';
+      document.getElementById('syncDetails').innerHTML = '';
+      
+      const response = await chrome.runtime.sendMessage({ type: 'SYNC_FULL' });
+      if (response?.ok === false) {
+        alert(`Sync error: ${response.error}`);
+      }
+    } catch (e) {
+      console.error('Sync error:', e);
+      alert('Sync failed. Check if extension is properly loaded.');
+    }
+  });
+  
+  document.getElementById('syncTest')?.addEventListener('click', async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'SYNC_TEST' });
+      if (response?.ok === false) {
+        alert(`Test error: ${response.error}`);
+      } else {
+        alert('Test successful!');
+      }
+    } catch (e) {
+      console.error('Test error:', e);
+      alert('Test failed. Check if extension is properly loaded.');
+    }
+  });
+  
+  document.getElementById('syncStop')?.addEventListener('click', async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'SYNC_STOP' });
+      if (response?.ok === false) {
+        alert(`Stop error: ${response.error}`);
+      } else {
+        alert('Sync stopped');
+      }
+    } catch (e) {
+      console.error('Stop error:', e);
+      alert('Stop failed. Check if extension is properly loaded.');
+    }
+  });
+  
+  document.getElementById('exportIndex')?.addEventListener('click', async () => {
+    await chrome.runtime.sendMessage({ type: 'EXPORT_INDEX' });
+  });
+  
+  document.getElementById('exportCsv')?.addEventListener('click', async () => {
+    await chrome.runtime.sendMessage({ type: 'EXPORT_INDEX_CSV' });
+  });
+  
+  document.getElementById('refreshLibrary')?.addEventListener('click', async () => {
+    try {
+      // Show a brief loading state
+      const refreshBtn = document.getElementById('refreshLibrary');
+      const originalText = refreshBtn.textContent;
+      refreshBtn.textContent = 'Refreshing...';
+      refreshBtn.disabled = true;
+      
+      // Reload data and refresh UI
+      await loadData();
+      renderFolderTree();
+      renderConversations();
+      
+      // Reset button
+      refreshBtn.textContent = originalText;
+      refreshBtn.disabled = false;
+      
+      // Optional: Show a brief success indicator
+      refreshBtn.textContent = '✓ Refreshed';
+      setTimeout(() => {
+        refreshBtn.textContent = originalText;
+      }, 1000);
+      
+    } catch (e) {
+      console.error('Refresh error:', e);
+      alert('Refresh failed. Check console for details.');
+      
+      // Reset button on error
+      const refreshBtn = document.getElementById('refreshLibrary');
+      refreshBtn.textContent = 'Refresh';
+      refreshBtn.disabled = false;
+    }
+  });
+  
+  // Bulk operations
+  document.getElementById('bulkOperations')?.addEventListener('click', () => {
+    if (selectedConversations.size === 0) {
+      alert('Please select conversations first');
+      return;
+    }
+    document.getElementById('bulkModal').style.display = 'flex';
+  });
+  
+  document.getElementById('closeBulkModal')?.addEventListener('click', () => {
+    document.getElementById('bulkModal').style.display = 'none';
+  });
+  
+  document.getElementById('bulkMoveToFolder')?.addEventListener('click', async () => {
+    const folderPath = prompt('Move to folder:', 'Inbox');
+    if (!folderPath) return;
+    
+    for (const id of selectedConversations) {
+      const conv = conversations.find(c => c.id === id);
+      if (conv) conv.folder = folderPath;
+    }
+    await saveData();
+    selectedConversations.clear();
+    document.getElementById('bulkModal').style.display = 'none';
+    renderFolderTree();
+    renderConversations();
+  });
+  
+  document.getElementById('bulkAddTags')?.addEventListener('click', async () => {
+    const newTags = prompt('Add tags (comma-separated):');
+    if (!newTags) return;
+    
+    const tagsToAdd = newTags.split(',').map(s => s.trim()).filter(Boolean);
+    for (const id of selectedConversations) {
+      const conv = conversations.find(c => c.id === id);
+      if (conv) {
+        conv.tags = conv.tags || [];
+        tagsToAdd.forEach(tag => {
+          if (!conv.tags.includes(tag)) conv.tags.push(tag);
+          if (!tags[tag]) tags[tag] = '#61dafb';
+        });
+      }
+    }
+    await saveData();
+    selectedConversations.clear();
+    document.getElementById('bulkModal').style.display = 'none';
+    renderConversations();
+  });
+  
+  document.getElementById('bulkExport')?.addEventListener('click', async () => {
+    for (const id of selectedConversations) {
+      await exportConversation(id);
+    }
+    selectedConversations.clear();
+    document.getElementById('bulkModal').style.display = 'none';
+    renderConversations();
+  });
+  
+  document.getElementById('bulkDelete')?.addEventListener('click', async () => {
+    if (!confirm(`Delete ${selectedConversations.size} conversations?`)) return;
+    
+    try {
+      for (const id of selectedConversations) {
+        const res = await chrome.runtime.sendMessage({ type: 'DELETE_CONVERSATION', id });
+        if (res?.ok === false) {
+          console.error(`Failed to delete ${id}:`, res.error);
+        }
+      }
+      
+      await loadData();
+      selectedConversations.clear();
+      document.getElementById('bulkModal').style.display = 'none';
+      renderFolderTree();
+      renderConversations();
+    } catch (e) {
+      console.error('Bulk delete error:', e);
+      alert('Bulk delete failed. Check if extension is properly loaded.');
+    }
+  });
+});
+
+// No longer need global functions since we removed inline handlers

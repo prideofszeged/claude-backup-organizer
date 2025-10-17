@@ -1,0 +1,41 @@
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h3>Claude Organizer</h3>
+  </header>
+
+  <section class="controls">
+    <input id="q" placeholder="Search title / tags / notes" />
+    <button id="syncInc">Sync</button>
+    <button id="syncFull" title="Force re-download">Full Sync</button>
+    <button id="syncTest" title="Minimal connectivity check">Test</button>
+    <button id="syncStop" title="Abort running sync">Stop</button>
+    <button id="openOptions">Open Library</button>
+  </section>
+
+  <div id="status" class="status" style="display:none"></div>
+
+  <ul id="results" class="list"></ul>
+
+  <footer>
+    <small>Tip: keep Claude logged in while syncing.</small>
+  </footer>
+
+  <section class="debug">
+    <div class="row">
+      <label><input type="checkbox" id="debugToggle"/> Show debug log</label>
+      <button id="debugClear" title="Clear debug log">Clear</button>
+    </div>
+    <pre id="debugLog" style="display:none"></pre>
+  </section>
+
+  <script src="popup.js"></script>
+</body>
+</html>
+

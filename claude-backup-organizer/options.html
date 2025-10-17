@@ -1,0 +1,107 @@
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="options">
+  <header>
+    <h2>Claude Library</h2>
+    <div class="right">
+      <button id="syncInc">Sync</button>
+      <button id="syncFull">Full Sync</button>
+      <button id="syncTest" title="Minimal connectivity check">Test</button>
+      <button id="syncStop" title="Abort running sync">Stop</button>
+      <button id="refreshLibrary" title="Refresh conversation library">Refresh</button>
+      <button id="exportIndex">Export JSON</button>
+      <button id="exportCsv">Export CSV</button>
+      <label class="importBtn">Import Index<input id="importFile" type="file" accept="application/json" hidden></label>
+      <label style="margin-left:10px"><input type="checkbox" id="downloadDuringSync"/> Save to disk during sync</label>
+    </div>
+  </header>
+
+  <div id="status" class="status" style="display:none"></div>
+  
+  <!-- Sync Progress Section -->
+  <div id="syncProgress" class="sync-progress" style="display:none">
+    <div class="progress-header">
+      <span id="syncStatusText">Syncing...</span>
+      <span id="syncProgressText">0/0</span>
+    </div>
+    <div class="progress-bar">
+      <div id="progressFill" class="progress-fill"></div>
+    </div>
+    <div id="syncDetails" class="sync-details"></div>
+  </div>
+
+  <section class="controls">
+    <input id="q" placeholder="Search title / tags / notes" />
+    <select id="sortBy">
+      <option value="updated-desc">Updated (newest first)</option>
+      <option value="updated-asc">Updated (oldest first)</option>
+      <option value="title-asc">Title A-Z</option>
+      <option value="title-desc">Title Z-A</option>
+    </select>
+    <button id="bulkOperations">Bulk Actions</button>
+  </section>
+
+  <div class="main-content">
+    <aside class="folder-tree">
+      <div class="tree-header">
+        <h3>Folders</h3>
+        <button id="addFolder" class="small-btn">+</button>
+      </div>
+      <div id="folderTree" class="tree"></div>
+    </aside>
+    
+    <main class="conversation-list">
+      <div class="list-header">
+        <span id="conversationCount">0 conversations</span>
+        <button id="selectAll">Select All</button>
+      </div>
+      <div id="conversationGrid" class="conversation-grid"></div>
+    </main>
+  </div>
+
+  <!-- Bulk Operations Modal -->
+  <div id="bulkModal" class="modal" style="display:none">
+    <div class="modal-content">
+      <h3>Bulk Actions</h3>
+      <div class="bulk-actions">
+        <button id="bulkMoveToFolder">Move to Folder</button>
+        <button id="bulkAddTags">Add Tags</button>
+        <button id="bulkRemoveTags">Remove Tags</button>
+        <button id="bulkExport">Export Selected</button>
+        <button id="bulkDelete">Delete Selected</button>
+      </div>
+      <button id="closeBulkModal">Close</button>
+    </div>
+  </div>
+
+  <!-- Tag Management Modal -->
+  <div id="tagModal" class="modal" style="display:none">
+    <div class="modal-content">
+      <h3>Manage Tags</h3>
+      <div id="tagList" class="tag-management"></div>
+      <div class="new-tag">
+        <input id="newTagName" placeholder="Tag name" />
+        <input id="newTagColor" type="color" value="#61dafb" />
+        <button id="addTag">Add Tag</button>
+      </div>
+      <button id="closeTagModal">Close</button>
+    </div>
+  </div>
+
+  <section class="debug">
+    <div class="row">
+      <label><input type="checkbox" id="debugToggle"/> Show debug log</label>
+      <button id="debugClear" title="Clear debug log">Clear</button>
+    </div>
+    <pre id="debugLog" style="display:none"></pre>
+  </section>
+
+  <script src="options.js"></script>
+</body>
+</html>
+
