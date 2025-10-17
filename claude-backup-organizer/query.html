@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>Claude Query Interface</title>
+</head>
+<body class="query">
+  <header>
+    <h2>SQL Query Interface</h2>
+    <div class="right">
+      <button id="backToLibrary">← Back to Library</button>
+      <button id="runQuery">Run Query</button>
+      <button id="exportResults">Export Results</button>
+    </div>
+  </header>
+
+  <div id="status" class="status" style="display:none"></div>
+
+  <div class="query-interface">
+    <aside class="query-sidebar">
+      <div class="schema-browser">
+        <h3>Schema</h3>
+        <div id="schemaTables" class="schema-tables">
+          <details class="schema-table" open>
+            <summary>conversations <span class="pk-indicator">🔑 Primary</span></summary>
+            <div class="schema-columns">
+              <div class="column">id <span class="type pk">TEXT PRIMARY KEY</span></div>
+              <div class="column">title <span class="type">TEXT</span></div>
+              <div class="column">updatedAt <span class="type">DATETIME</span></div>
+              <div class="column">createdAt <span class="type">DATETIME</span></div>
+              <div class="column">model <span class="type">TEXT</span></div>
+              <div class="column">tags <span class="type">TEXT[]</span></div>
+              <div class="column">notes <span class="type">TEXT</span></div>
+              <div class="column">folder <span class="type">TEXT</span></div>
+              <div class="column">messageCount <span class="type">INTEGER</span></div>
+            </div>
+          </details>
+          <details class="schema-table">
+            <summary>messages <span class="fk-indicator">🔗 Child of conversations</span></summary>
+            <div class="schema-columns">
+              <div class="column">conversationId <span class="type fk">TEXT → conversations.id</span></div>
+              <div class="column">messageId <span class="type pk">TEXT PRIMARY KEY</span></div>
+              <div class="column">sender <span class="type">TEXT</span></div>
+              <div class="column">content <span class="type">TEXT</span></div>
+              <div class="column">createdAt <span class="type">DATETIME</span></div>
+              <div class="column">index <span class="type">INTEGER</span></div>
+            </div>
+          </details>
+          <details class="schema-table">
+            <summary>thinking <span class="fk-indicator">🔗 Child of conversations & messages</span></summary>
+            <div class="schema-columns">
+              <div class="column">conversationId <span class="type fk">TEXT → conversations.id</span></div>
+              <div class="column">messageId <span class="type fk">TEXT → messages.messageId</span></div>
+              <div class="column">content <span class="type">TEXT</span></div>
+              <div class="column">length <span class="type">INTEGER</span></div>
+            </div>
+          </details>
+          <details class="schema-table">
+            <summary>tools <span class="fk-indicator">🔗 Child of conversations & messages</span></summary>
+            <div class="schema-columns">
+              <div class="column">conversationId <span class="type fk">TEXT → conversations.id</span></div>
+              <div class="column">messageId <span class="type fk">TEXT → messages.messageId</span></div>
+              <div class="column">toolType <span class="type">TEXT</span></div>
+              <div class="column">toolData <span class="type">JSON</span></div>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <div class="query-templates">
+        <h3>Single Table Queries</h3>
+        <div id="queryTemplates" class="templates">
+          <button class="template-btn" data-query="SELECT title, updatedAt, model FROM conversations ORDER BY updatedAt DESC LIMIT 10;">Recent Conversations</button>
+          <button class="template-btn" data-query="SELECT COUNT(*) as total, model FROM conversations GROUP BY model;">Conversations by Model</button>
+          <button class="template-btn" data-query="SELECT title FROM conversations WHERE tags LIKE '%python%';">Conversations with Python tag</button>
+          <button class="template-btn" data-query="SELECT title, content FROM conversations WHERE content LIKE '%React%';">Search for React content</button>
+          <button class="template-btn" data-query="SELECT DATE(createdAt) as date, COUNT(*) as count FROM conversations GROUP BY DATE(createdAt) ORDER BY date DESC;">Daily Conversation Count</button>
+        </div>
+        
+        <h3>JOIN Queries</h3>
+        <div class="templates">
+          <button class="template-btn" data-query="SELECT c.title, m.sender, m.content FROM conversations c JOIN messages m ON c.id = m.conversationId WHERE c.title LIKE '%python%';">Messages in Python conversations</button>
+          <button class="template-btn" data-query="SELECT c.title, COUNT(m.messageId) as message_count FROM conversations c LEFT JOIN messages m ON c.id = m.conversationId GROUP BY c.id, c.title ORDER BY message_count DESC LIMIT 5;">Longest conversations (with JOIN)</button>
+          <button class="template-btn" data-query="SELECT c.title, t.content as thinking FROM conversations c JOIN thinking t ON c.id = t.conversationId WHERE t.length > 1000;">Long thinking sessions</button>
+          <button class="template-btn" data-query="SELECT c.title, c.model, COUNT(DISTINCT tool.toolType) as unique_tools FROM conversations c LEFT JOIN tools tool ON c.id = tool.conversationId GROUP BY c.id, c.title, c.model ORDER BY unique_tools DESC;">Tool usage by conversation</button>
+          <button class="template-btn" data-query="SELECT c.title, m.sender, t.content as thinking FROM conversations c JOIN messages m ON c.id = m.conversationId JOIN thinking t ON m.messageId = t.messageId WHERE m.sender = 'assistant';">Claude's thinking in responses</button>
+          <button class="template-btn" data-query="SELECT c.model, COUNT(DISTINCT c.id) as conversations, COUNT(m.messageId) as messages FROM conversations c LEFT JOIN messages m ON c.id = m.conversationId GROUP BY c.model;">Activity by model</button>
+        </div>
+      </div>
+
+      <div class="query-history">
+        <h3>Query History</h3>
+        <div id="queryHistory" class="history-list"></div>
+      </div>
+    </aside>
+
+    <main class="query-main">
+      <div class="query-editor">
+        <div class="editor-header">
+          <span>SQL Query</span>
+          <div class="editor-actions">
+            <button id="clearQuery">Clear</button>
+            <button id="formatQuery">Format</button>
+            <button id="runQueryBtn" class="run-btn">▶ Run Query</button>
+          </div>
+        </div>
+        <textarea id="queryInput" placeholder="Enter your SQL query here...
+
+Examples:
+SELECT title, updatedAt FROM conversations WHERE tags LIKE '%python%'
+SELECT COUNT(*) FROM messages WHERE sender = 'human'
+SELECT title FROM conversations WHERE content LIKE '%React%'
+
+Press Ctrl+Enter to run query"></textarea>
+      </div>
+
+      <div class="results-section">
+        <div class="results-header">
+          <span id="resultsCount">Results</span>
+          <div class="results-actions">
+            <select id="exportFormat">
+              <option value="json">JSON</option>
+              <option value="csv">CSV</option>
+              <option value="markdown">Markdown</option>
+            </select>
+            <button id="copyResults">Copy</button>
+          </div>
+        </div>
+        <div id="resultsContainer" class="results-container">
+          <div class="results-placeholder">
+            Run a query to see results here...
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="query.js"></script>
+</body>
+</html>

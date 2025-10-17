@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Read(C:\\Users\\stmad\\Downloads\\claude-backup/**)",
+      "Read(C:\\Users\\stmad\\Downloads\\claude-backup\\2025-10-17T01-40-00-142Z/**)",
+      "Read(C:\\Users\\stmad\\Downloads\\claude-backup\\2025-10-17T01-40-00-142Z/**)",
+      "Read(C:\\Users\\stmad\\Downloads\\claude-backup\\2025-10-17T01-40-00-142Z/**)",
+      "Read(C:\\Users\\stmad\\Downloads\\claude-backup\\2025-10-17T01-40-00-142Z/**)"
     ],
     "deny": [],
     "ask": []

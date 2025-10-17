@@ -1,0 +1,75 @@
+# Chrome Extension - Claude Backup Organizer
+# ==========================================
+
+# Build and distribution files
+build/
+dist/
+*.zip
+*.crx
+
+# Extension private keys (NEVER commit these!)
+*.pem
+key.pem
+secrets/
+
+# User data and exports
+claude-backup/
+exports/
+downloads/
+backups/
+*.json.backup
+
+# Development and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+debug.log
+error.log
+
+# Node.js (if build tools added later)
+node_modules/
+package-lock.json
+yarn.lock
+npm-debug.log*
+
+# Environment files
+.env
+.env.local
+config.json
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.cache
+.cache/
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Store submission assets
+store-assets/
+screenshots/
+promotional/
+
+# OS files
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Private notes
+notes.md
+TODO-private.md
+drafts/
