@@ -17,6 +17,7 @@
       <button id="refreshLibrary" title="Refresh conversation library">Refresh</button>
       <button id="exportIndex">Export JSON</button>
       <button id="exportCsv">Export CSV</button>
+      <button id="deleteSettings" title="Configure deletion behavior">⚙️ Delete Settings</button>
       <label class="importBtn">Import Index<input id="importFile" type="file" accept="application/json" hidden></label>
       <label style="margin-left:10px"><input type="checkbox" id="downloadDuringSync"/> Save to disk during sync</label>
     </div>
@@ -74,8 +75,23 @@
         <button id="bulkAddTags">Add Tags</button>
         <button id="bulkRemoveTags">Remove Tags</button>
         <button id="bulkExport">Export Selected</button>
-        <button id="bulkDelete">Delete Selected</button>
       </div>
+      
+      <div class="bulk-delete-section">
+        <h4>Delete Options</h4>
+        <div class="delete-mode-selection">
+          <label>
+            <input type="radio" name="bulkDeleteMode" value="local" checked>
+            Remove from library only (can re-sync)
+          </label>
+          <label>
+            <input type="radio" name="bulkDeleteMode" value="web">
+            Delete from Claude.ai permanently ⚠️
+          </label>
+        </div>
+        <button id="bulkDeleteExecute" class="bulk-delete-btn">Delete Selected</button>
+      </div>
+      
       <button id="closeBulkModal">Close</button>
     </div>
   </div>
@@ -122,6 +138,50 @@
         <article id="modalRaw" class="modal-raw-view"></article>
         <article id="modalRendered" class="modal-rendered" style="display:none"></article>
         <textarea id="modalMarkdown" class="modal-markdown" style="display:none"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Settings Modal -->
+  <div id="deleteSettingsModal" class="modal" style="display:none">
+    <div class="modal-content">
+      <h3>🗑️ Deletion Settings</h3>
+      
+      <div class="settings-section">
+        <h4>Default Behavior</h4>
+        <div class="setting-options">
+          <label>
+            <input type="radio" name="deleteMode" value="local-only">
+            <strong>Remove from library only</strong> (safe, reversible via sync)
+          </label>
+          <label>
+            <input type="radio" name="deleteMode" value="web-confirm">
+            <strong>Ask me each time</strong> (choose local vs web deletion)
+          </label>
+          <label>
+            <input type="radio" name="deleteMode" value="web-default">
+            <strong>Delete from Claude.ai by default</strong> (permanent)
+          </label>
+        </div>
+      </div>
+      
+      <div class="settings-section">
+        <h4>Safety Features</h4>
+        <div class="setting-checkboxes">
+          <label>
+            <input type="checkbox" id="showExportReminder">
+            Show export reminder before permanent deletion
+          </label>
+          <label>
+            <input type="checkbox" id="confirmBulkDeletes">
+            Confirm bulk deletions individually
+          </label>
+        </div>
+      </div>
+      
+      <div class="settings-actions">
+        <button id="saveDeleteSettings">Save Settings</button>
+        <button id="closeDeleteSettings">Cancel</button>
       </div>
     </div>
   </div>

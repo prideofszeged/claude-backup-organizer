@@ -207,6 +207,10 @@ function renderConversations() {
         <button class="edit-btn" data-conv-id="${conv.id}">Edit</button>
         <button class="view-btn" data-conv-id="${conv.id}">View</button>
         <button class="export-btn" data-conv-id="${conv.id}">Export</button>
+        <div class="delete-options">
+          <button class="delete-local-btn" data-conv-id="${conv.id}" title="Remove from library (can re-sync)">Remove</button>
+          <button class="delete-web-btn" data-conv-id="${conv.id}" title="Delete from Claude.ai permanently">Delete</button>
+        </div>
       </div>
     `;
     
@@ -224,6 +228,12 @@ function renderConversations() {
     
     const exportBtn = card.querySelector('.export-btn');
     exportBtn.addEventListener('click', () => exportConversation(conv.id));
+    
+    const deleteLocalBtn = card.querySelector('.delete-local-btn');
+    deleteLocalBtn.addEventListener('click', () => deleteConversationLocal(conv.id));
+    
+    const deleteWebBtn = card.querySelector('.delete-web-btn');
+    deleteWebBtn.addEventListener('click', () => deleteConversationWeb(conv.id));
     
     container.appendChild(card);
   });
@@ -565,6 +575,71 @@ async function exportConversation(id) {
   }
 }
 
+async function deleteConversationLocal(id) {
+  const conversation = conversations.find(c => c.id === id);
+  const title = conversation?.title || 'conversation';
+  
+  if (!confirm(`Remove "${title}" from library?\n\nThis will only remove it locally. You can re-sync from Claude.ai to restore it.`)) {
+    return;
+  }
+  
+  try {
+    const res = await chrome.runtime.sendMessage({ 
+      type: 'DELETE_CONVERSATION', 
+      id,
+      options: { deleteFromWeb: false }
+    });
+    
+    if (res?.ok) {
+      await loadData();
+      renderFolderTree();
+      renderConversations();
+    } else {
+      alert(res.error || 'Failed to remove conversation');
+    }
+  } catch (e) {
+    alert('Delete failed. Check if extension is properly loaded.');
+  }
+}
+
+async function deleteConversationWeb(id) {
+  const conversation = conversations.find(c => c.id === id);
+  const title = conversation?.title || 'conversation';
+  
+  // Get settings to check for export reminder
+  try {
+    const settings = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    
+    if (settings.showExportReminder) {
+      const exportFirst = confirm(`⚠️ About to permanently delete "${title}" from Claude.ai\n\nThis action cannot be undone! Would you like to export it first?`);
+      if (exportFirst) {
+        await exportConversation(id);
+        // Give user time to see export initiated
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    const confirmDelete = confirm(`🗑️ Permanently delete "${title}" from Claude.ai?\n\nThis will remove it from Claude.ai entirely and cannot be undone.`);
+    if (!confirmDelete) return;
+    
+    const res = await chrome.runtime.sendMessage({ 
+      type: 'DELETE_CONVERSATION', 
+      id,
+      options: { deleteFromWeb: true }
+    });
+    
+    if (res?.ok) {
+      await loadData();
+      renderFolderTree();
+      renderConversations();
+    } else {
+      alert(res.error || 'Failed to delete conversation from Claude.ai');
+    }
+  } catch (e) {
+    alert('Delete failed. Check if extension is properly loaded.');
+  }
+}
+
 function closeModal() {
   document.querySelectorAll('.modal').forEach(modal => modal.remove());
 }
@@ -789,6 +864,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.location.href = 'query.html';
   });
 
+  document.getElementById('deleteSettings')?.addEventListener('click', openDeleteSettingsModal);
+
   // Modal conversation viewer controls
   document.getElementById('closeConversationModal')?.addEventListener('click', closeConversationModal);
   document.getElementById('prevConversation')?.addEventListener('click', () => navigateConversation(-1));
@@ -903,14 +980,54 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderConversations();
   });
   
-  document.getElementById('bulkDelete')?.addEventListener('click', async () => {
-    if (!confirm(`Delete ${selectedConversations.size} conversations?`)) return;
+  document.getElementById('bulkDeleteExecute')?.addEventListener('click', async () => {
+    const deleteMode = document.querySelector('input[name="bulkDeleteMode"]:checked')?.value;
+    const isWebDelete = deleteMode === 'web';
+    const count = selectedConversations.size;
+    
+    // Different confirmations based on delete mode
+    let confirmMessage;
+    if (isWebDelete) {
+      confirmMessage = `⚠️ PERMANENTLY DELETE ${count} conversations from Claude.ai?\n\nThis action cannot be undone and will remove them from Claude.ai entirely.`;
+    } else {
+      confirmMessage = `Remove ${count} conversations from library?\n\nThey will only be removed locally and can be restored by re-syncing.`;
+    }
+    
+    if (!confirm(confirmMessage)) return;
     
     try {
+      const settings = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+      
+      // Show export reminder for web deletions
+      if (isWebDelete && settings.showExportReminder) {
+        const exportFirst = confirm(`Would you like to export these ${count} conversations before deleting them permanently?`);
+        if (exportFirst) {
+          for (const id of selectedConversations) {
+            await exportConversation(id);
+          }
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Give time for exports
+        }
+      }
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
       for (const id of selectedConversations) {
-        const res = await chrome.runtime.sendMessage({ type: 'DELETE_CONVERSATION', id });
-        if (res?.ok === false) {
-          console.error(`Failed to delete ${id}:`, res.error);
+        try {
+          const res = await chrome.runtime.sendMessage({ 
+            type: 'DELETE_CONVERSATION', 
+            id,
+            options: { deleteFromWeb: isWebDelete }
+          });
+          if (res?.ok) {
+            successCount++;
+          } else {
+            console.error(`Failed to delete ${id}:`, res.error);
+            errorCount++;
+          }
+        } catch (e) {
+          console.error(`Error deleting ${id}:`, e);
+          errorCount++;
         }
       }
       
@@ -919,11 +1036,65 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('bulkModal').style.display = 'none';
       renderFolderTree();
       renderConversations();
+      
+      // Show result summary
+      let message = `${successCount} conversations ${isWebDelete ? 'deleted' : 'removed'} successfully`;
+      if (errorCount > 0) {
+        message += `\n${errorCount} failed (check console for details)`;
+      }
+      alert(message);
+      
     } catch (e) {
       console.error('Bulk delete error:', e);
       alert('Bulk delete failed. Check if extension is properly loaded.');
     }
   });
+
+  // Delete settings modal
+  document.getElementById('closeDeleteSettings')?.addEventListener('click', () => {
+    document.getElementById('deleteSettingsModal').style.display = 'none';
+  });
+
+  document.getElementById('saveDeleteSettings')?.addEventListener('click', saveDeleteSettings);
 });
+
+async function openDeleteSettingsModal() {
+  try {
+    // Load current settings
+    const settings = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    
+    // Populate form
+    document.querySelector(`input[name="deleteMode"][value="${settings.deleteMode}"]`).checked = true;
+    document.getElementById('showExportReminder').checked = settings.showExportReminder;
+    document.getElementById('confirmBulkDeletes').checked = settings.confirmBulkDeletes;
+    
+    // Show modal
+    document.getElementById('deleteSettingsModal').style.display = 'flex';
+  } catch (e) {
+    alert('Failed to load settings. Check if extension is properly loaded.');
+  }
+}
+
+async function saveDeleteSettings() {
+  try {
+    const deleteMode = document.querySelector('input[name="deleteMode"]:checked')?.value;
+    const showExportReminder = document.getElementById('showExportReminder').checked;
+    const confirmBulkDeletes = document.getElementById('confirmBulkDeletes').checked;
+    
+    await chrome.runtime.sendMessage({ 
+      type: 'SET_SETTINGS', 
+      settings: { 
+        deleteMode,
+        showExportReminder,
+        confirmBulkDeletes
+      }
+    });
+    
+    document.getElementById('deleteSettingsModal').style.display = 'none';
+    alert('Delete settings saved successfully!');
+  } catch (e) {
+    alert('Failed to save settings. Check if extension is properly loaded.');
+  }
+}
 
 // No longer need global functions since we removed inline handlers

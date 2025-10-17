@@ -206,6 +206,9 @@ async function getSettings() {
   const { settings = {} } = await chrome.storage.local.get(['settings']);
   return {
     downloadDuringSync: false,
+    deleteMode: 'local-only', // 'local-only', 'web-confirm', 'web-default'
+    showExportReminder: true,
+    confirmBulkDeletes: true,
     ...settings
   };
 }
@@ -411,8 +414,38 @@ async function updateMeta(id, { tags, notes, folder }) {
   return next;
 }
 
-async function deleteConversation(id) {
+async function deleteConversationFromWeb(orgId, chatId, opts = {}) {
+  await ensureRate();
+  const url = `https://claude.ai/api/organizations/${orgId}/chat_conversations/${chatId}`;
+  const res = await fetch(url, { 
+    method: 'DELETE',
+    credentials: "include", 
+    signal: opts.signal 
+  });
+  
+  if (!res.ok) {
+    if (res.status === 404) {
+      // Already deleted or doesn't exist
+      return { ok: true, alreadyDeleted: true };
+    }
+    throw new Error(`${res.status} ${res.statusText}`);
+  }
+  
+  return { ok: true };
+}
+
+async function deleteConversation(id, options = {}) {
+  const { deleteFromWeb = false } = options;
+  
   try {
+    // If web deletion is requested, delete from Claude.ai first
+    if (deleteFromWeb) {
+      const orgId = await getOrgId();
+      await deleteConversationFromWeb(orgId, id);
+      await logDebug('info', `Deleted conversation ${id} from Claude.ai`);
+    }
+    
+    // Always remove from local storage/cache
     const { index, byId, lastSync } = await getIndex();
     const idx = index.findIndex(x => x.id === id);
     if (idx === -1) throw new Error("Conversation not found");
@@ -424,7 +457,7 @@ async function deleteConversation(id) {
     try { await dbDeleteConv(id); } catch (_) { /* ignore */ }
     
     await setIndex({ index, byId, lastSync });
-    return { ok: true };
+    return { ok: true, deletedFromWeb: deleteFromWeb };
   } catch (e) {
     return { ok: false, error: e?.message || String(e) };
   }
@@ -634,7 +667,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ html: await getConversationRawView(msg.id) });
         break;
       case "DELETE_CONVERSATION":
-        sendResponse(await deleteConversation(msg.id));
+        sendResponse(await deleteConversation(msg.id, msg.options || {}));
         break;
       default:
         sendResponse({ ok: false, error: "Unknown message" });
