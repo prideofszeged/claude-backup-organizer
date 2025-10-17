@@ -14,12 +14,14 @@
   </header>
   <section class="controls">
     <select id="mode">
+      <option value="raw">Raw View</option>
       <option value="rendered">Rendered</option>
       <option value="markdown">Markdown</option>
     </select>
   </section>
   <main>
-    <article id="rendered" class="rendered"></article>
+    <article id="raw" class="raw-view"></article>
+    <article id="rendered" class="rendered" style="display:none"></article>
     <textarea id="markdown" class="markdown" style="display:none"></textarea>
   </main>
   <script src="viewer.js"></script>

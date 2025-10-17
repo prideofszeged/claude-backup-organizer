@@ -451,9 +451,69 @@ async function exportIndexCsv() {
   return { ok: true };
 }
 
+function conversationToRawView(conv) {
+  const title = normalizeTitle(conv?.name);
+  const msgs = conv?.chat_messages || conv?.tree_state?.messages || conv?.messages || [];
+  
+  let html = `<div class="conversation-header">
+    <h1>${title}</h1>
+    <div class="conversation-meta">
+      <span>Created: ${new Date(conv?.created_at || '').toLocaleString()}</span>
+      <span>Updated: ${new Date(conv?.updated_at || '').toLocaleString()}</span>
+      <span>Model: ${conv?.model || 'Unknown'}</span>
+    </div>
+  </div>`;
+  
+  for (const m of msgs) {
+    const role = m.sender || m.role || 'assistant';
+    const isHuman = role === 'human';
+    const parts = m.content || [];
+    
+    html += `<div class="message ${isHuman ? 'human-message' : 'assistant-message'}">
+      <div class="message-header">
+        <span class="role-badge ${role}">${isHuman ? 'You' : 'Claude'}</span>
+        <span class="timestamp">${new Date(m.created_at || m.updated_at || '').toLocaleString()}</span>
+      </div>
+      <div class="message-content">`;
+    
+    // Handle thinking content first (if present)
+    const thinkingPart = parts.find(p => p.type === 'thinking');
+    if (thinkingPart && thinkingPart.thinking) {
+      html += `<details class="thinking-section">
+        <summary>🤔 Thinking</summary>
+        <div class="thinking-content">${thinkingPart.thinking.replace(/\n/g, '<br>')}</div>
+      </details>`;
+    }
+    
+    // Handle main text content
+    const textPart = parts.find(p => p.type === 'text') || parts.find(p => p.text);
+    if (textPart && textPart.text) {
+      html += `<div class="message-text">${textPart.text.replace(/\n/g, '<br>')}</div>`;
+    }
+    
+    // Handle other content types (tools, etc.)
+    const otherParts = parts.filter(p => p.type && p.type !== 'text' && p.type !== 'thinking');
+    for (const part of otherParts) {
+      html += `<details class="tool-section">
+        <summary>🔧 ${part.type}</summary>
+        <pre class="tool-content">${JSON.stringify(part, null, 2)}</pre>
+      </details>`;
+    }
+    
+    html += `</div></div>`;
+  }
+  
+  return html;
+}
+
 async function getConversationMarkdown(id) {
   const conv = await getConversationCached(id);
   return conversationToMarkdown(conv);
+}
+
+async function getConversationRawView(id) {
+  const conv = await getConversationCached(id);
+  return conversationToRawView(conv);
 }
 
 async function exportConversationMd(id) {
@@ -569,6 +629,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         break;
       case "GET_CONVERSATION_MD":
         sendResponse({ md: await getConversationMarkdown(msg.id) });
+        break;
+      case "GET_CONVERSATION_RAW":
+        sendResponse({ html: await getConversationRawView(msg.id) });
         break;
       case "DELETE_CONVERSATION":
         sendResponse(await deleteConversation(msg.id));

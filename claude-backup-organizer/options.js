@@ -621,6 +621,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       refreshBtn.disabled = false;
     }
   });
+
+  document.getElementById('sqlQuery')?.addEventListener('click', () => {
+    window.location.href = 'query.html';
+  });
   
   // Bulk operations
   document.getElementById('bulkOperations')?.addEventListener('click', () => {

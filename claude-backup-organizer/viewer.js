@@ -31,9 +31,13 @@ function qs(k){ return new URLSearchParams(location.search).get(k); }
     if (res?.ok === false) alert(res.error || 'Export failed');
   };
 
+  // Load both markdown and raw view
   const { md } = await chrome.runtime.sendMessage({ type: 'GET_CONVERSATION_MD', id });
+  const { html } = await chrome.runtime.sendMessage({ type: 'GET_CONVERSATION_RAW', id });
+  
   document.getElementById('markdown').value = md;
   document.getElementById('rendered').innerHTML = renderHtmlFromMd(md);
+  document.getElementById('raw').innerHTML = html;
 
   const firstLine = md.split('\n')[0].replace(/^#\s*/, '').trim();
   if (firstLine) document.getElementById('title').textContent = firstLine;
@@ -41,6 +45,7 @@ function qs(k){ return new URLSearchParams(location.search).get(k); }
   const mode = document.getElementById('mode');
   mode.addEventListener('change', () => {
     const m = mode.value;
+    document.getElementById('raw').style.display = m==='raw' ? 'block' : 'none';
     document.getElementById('markdown').style.display = m==='markdown' ? 'block' : 'none';
     document.getElementById('rendered').style.display = m==='rendered' ? 'block' : 'none';
   });
