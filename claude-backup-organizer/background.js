@@ -224,7 +224,7 @@ function normalizeTitle(s) {
 function conversationToMarkdown(conv) {
   const title = normalizeTitle(conv?.name);
   const lines = [`# ${title}`, ""];
-  const msgs = conv?.tree_state?.messages || conv?.messages || [];
+  const msgs = conv?.chat_messages || conv?.tree_state?.messages || conv?.messages || [];
   for (const m of msgs) {
     const role = m.sender || m.role || 'assistant';
     const parts = m.content || [];
