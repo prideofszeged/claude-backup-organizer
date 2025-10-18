@@ -206,6 +206,9 @@ async function getSettings() {
   const { settings = {} } = await chrome.storage.local.get(['settings']);
   return {
     downloadDuringSync: false,
+    deleteMode: 'local-only', // 'local-only', 'web-confirm', 'web-default'
+    showExportReminder: true,
+    confirmBulkDeletes: true,
     ...settings
   };
 }
@@ -387,6 +390,10 @@ async function incrementalSync() {
     throw error;
   } finally {
     endSync();
+    // Update last sync time for stats
+    try {
+      await chrome.storage.local.set({ lastSyncTime: new Date().toISOString() });
+    } catch (_) {}
   }
 }
 
@@ -411,8 +418,38 @@ async function updateMeta(id, { tags, notes, folder }) {
   return next;
 }
 
-async function deleteConversation(id) {
+async function deleteConversationFromWeb(orgId, chatId, opts = {}) {
+  await ensureRate();
+  const url = `https://claude.ai/api/organizations/${orgId}/chat_conversations/${chatId}`;
+  const res = await fetch(url, { 
+    method: 'DELETE',
+    credentials: "include", 
+    signal: opts.signal 
+  });
+  
+  if (!res.ok) {
+    if (res.status === 404) {
+      // Already deleted or doesn't exist
+      return { ok: true, alreadyDeleted: true };
+    }
+    throw new Error(`${res.status} ${res.statusText}`);
+  }
+  
+  return { ok: true };
+}
+
+async function deleteConversation(id, options = {}) {
+  const { deleteFromWeb = false } = options;
+  
   try {
+    // If web deletion is requested, delete from Claude.ai first
+    if (deleteFromWeb) {
+      const orgId = await getOrgId();
+      await deleteConversationFromWeb(orgId, id);
+      await logDebug('info', `Deleted conversation ${id} from Claude.ai`);
+    }
+    
+    // Always remove from local storage/cache
     const { index, byId, lastSync } = await getIndex();
     const idx = index.findIndex(x => x.id === id);
     if (idx === -1) throw new Error("Conversation not found");
@@ -424,7 +461,7 @@ async function deleteConversation(id) {
     try { await dbDeleteConv(id); } catch (_) { /* ignore */ }
     
     await setIndex({ index, byId, lastSync });
-    return { ok: true };
+    return { ok: true, deletedFromWeb: deleteFromWeb };
   } catch (e) {
     return { ok: false, error: e?.message || String(e) };
   }
@@ -564,6 +601,39 @@ async function testSync() {
   }
 }
 
+// Window management for pop-out library
+async function popOutLibrary() {
+  try {
+    // Get saved window dimensions or use defaults
+    const { windowState = {} } = await chrome.storage.local.get(['windowState']);
+    const defaultDimensions = {
+      width: 1200,
+      height: 800,
+      left: 100,
+      top: 100
+    };
+    
+    const dimensions = { ...defaultDimensions, ...windowState };
+    
+    // Create the window with full mode parameter
+    const window = await chrome.windows.create({
+      url: chrome.runtime.getURL('options.html?mode=full'),
+      type: 'popup',
+      width: dimensions.width,
+      height: dimensions.height,
+      left: dimensions.left,
+      top: dimensions.top,
+      focused: true
+    });
+    
+    await logDebug('info', `Pop-out library opened in window ${window.id}`);
+    return { ok: true, windowId: window.id };
+  } catch (e) {
+    await logDebug('error', `Failed to pop out library: ${e?.message || e}`);
+    throw e;
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     switch (msg?.type) {
@@ -634,7 +704,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse({ html: await getConversationRawView(msg.id) });
         break;
       case "DELETE_CONVERSATION":
-        sendResponse(await deleteConversation(msg.id));
+        sendResponse(await deleteConversation(msg.id, msg.options || {}));
+        break;
+      case "POP_OUT_LIBRARY":
+        try {
+          sendResponse(await popOutLibrary());
+        } catch (e) {
+          await logDebug('error', `Pop out error: ${e?.message || e}`);
+          sendResponse({ ok: false, error: e?.message || String(e) });
+        }
         break;
       default:
         sendResponse({ ok: false, error: "Unknown message" });

@@ -207,6 +207,10 @@ function renderConversations() {
         <button class="edit-btn" data-conv-id="${conv.id}">Edit</button>
         <button class="view-btn" data-conv-id="${conv.id}">View</button>
         <button class="export-btn" data-conv-id="${conv.id}">Export</button>
+        <div class="delete-options">
+          <button class="delete-local-btn" data-conv-id="${conv.id}" title="Remove from library (can re-sync)">Remove</button>
+          <button class="delete-web-btn" data-conv-id="${conv.id}" title="Delete from Claude.ai permanently">Delete</button>
+        </div>
       </div>
     `;
     
@@ -224,6 +228,12 @@ function renderConversations() {
     
     const exportBtn = card.querySelector('.export-btn');
     exportBtn.addEventListener('click', () => exportConversation(conv.id));
+    
+    const deleteLocalBtn = card.querySelector('.delete-local-btn');
+    deleteLocalBtn.addEventListener('click', () => deleteConversationLocal(conv.id));
+    
+    const deleteWebBtn = card.querySelector('.delete-web-btn');
+    deleteWebBtn.addEventListener('click', () => deleteConversationWeb(conv.id));
     
     container.appendChild(card);
   });
@@ -385,11 +395,174 @@ async function saveConversationEdit(id) {
   }
 }
 
+// Modal viewer state
+let modalState = {
+  isOpen: false,
+  currentConversationId: null,
+  currentIndex: 0,
+  filteredConversations: [],
+  isFullscreen: false
+};
+
 function viewConversation(id) {
-  const path = location.pathname;
-  const dir = path.slice(0, path.lastIndexOf('/') + 1);
-  const rel = (dir === '/' ? '' : dir.slice(1)) + 'viewer.html?id=' + encodeURIComponent(id);
-  chrome.tabs.create({ url: chrome.runtime.getURL(rel) });
+  openConversationModal(id);
+}
+
+async function openConversationModal(conversationId) {
+  // Get current filtered conversations for navigation
+  modalState.filteredConversations = getFilteredConversations();
+  modalState.currentIndex = modalState.filteredConversations.findIndex(c => c.id === conversationId);
+  modalState.currentConversationId = conversationId;
+  modalState.isOpen = true;
+  
+  // Show modal
+  const modal = document.getElementById('conversationModal');
+  modal.style.display = 'flex';
+  setTimeout(() => modal.classList.add('show'), 10);
+  
+  // Load conversation content
+  await loadConversationInModal(conversationId);
+  updateModalNavigation();
+  
+  // Focus management
+  document.getElementById('closeConversationModal').focus();
+}
+
+async function loadConversationInModal(conversationId) {
+  try {
+    // Load both markdown and raw view
+    const [mdResponse, rawResponse] = await Promise.all([
+      chrome.runtime.sendMessage({ type: 'GET_CONVERSATION_MD', id: conversationId }),
+      chrome.runtime.sendMessage({ type: 'GET_CONVERSATION_RAW', id: conversationId })
+    ]);
+    
+    if (mdResponse.md && rawResponse.html) {
+      // Populate content
+      document.getElementById('modalMarkdown').value = mdResponse.md;
+      document.getElementById('modalRendered').innerHTML = renderHtmlFromMd(mdResponse.md);
+      document.getElementById('modalRaw').innerHTML = rawResponse.html;
+      
+      // Update title
+      const conversation = modalState.filteredConversations[modalState.currentIndex];
+      document.getElementById('modalConversationTitle').textContent = conversation?.title || 'Conversation';
+    }
+  } catch (error) {
+    console.error('Failed to load conversation:', error);
+    document.getElementById('modalRaw').innerHTML = `<div class="error">Failed to load conversation: ${error.message}</div>`;
+  }
+}
+
+function updateModalNavigation() {
+  const total = modalState.filteredConversations.length;
+  const current = modalState.currentIndex + 1;
+  
+  // Update position indicator
+  document.getElementById('conversationPosition').textContent = `${current} of ${total}`;
+  
+  // Update navigation buttons
+  document.getElementById('prevConversation').disabled = modalState.currentIndex <= 0;
+  document.getElementById('nextConversation').disabled = modalState.currentIndex >= total - 1;
+}
+
+function getFilteredConversations() {
+  // Get current search/filter state
+  const query = document.getElementById('q').value.toLowerCase();
+  const sortBy = document.getElementById('sortBy').value;
+  
+  let filtered = conversations.filter(conv => {
+    // Apply folder filter
+    if (currentFolder && conv.folder !== currentFolder) return false;
+    
+    // Apply search filter
+    if (query && rank(conv, query) === 0) return false;
+    
+    return true;
+  });
+  
+  // Apply sorting
+  if (sortBy === 'updated-desc') {
+    filtered.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+  } else if (sortBy === 'updated-asc') {
+    filtered.sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""));
+  } else if (sortBy === 'title-asc') {
+    filtered.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+  } else if (sortBy === 'title-desc') {
+    filtered.sort((a, b) => (b.title || "").localeCompare(a.title || ""));
+  }
+  
+  return filtered;
+}
+
+function closeConversationModal() {
+  const modal = document.getElementById('conversationModal');
+  modal.classList.remove('show');
+  
+  setTimeout(() => {
+    modal.style.display = 'none';
+    modalState.isOpen = false;
+    modalState.currentConversationId = null;
+  }, 200);
+}
+
+async function navigateConversation(direction) {
+  const newIndex = modalState.currentIndex + direction;
+  const total = modalState.filteredConversations.length;
+  
+  if (newIndex >= 0 && newIndex < total) {
+    modalState.currentIndex = newIndex;
+    const newConversation = modalState.filteredConversations[newIndex];
+    modalState.currentConversationId = newConversation.id;
+    
+    await loadConversationInModal(newConversation.id);
+    updateModalNavigation();
+  }
+}
+
+function toggleModalFullscreen() {
+  const modalContent = document.querySelector('.conversation-modal-content');
+  modalState.isFullscreen = !modalState.isFullscreen;
+  
+  if (modalState.isFullscreen) {
+    modalContent.classList.add('fullscreen');
+  } else {
+    modalContent.classList.remove('fullscreen');
+  }
+}
+
+function switchModalViewMode(mode) {
+  // Hide all views
+  document.getElementById('modalRaw').style.display = 'none';
+  document.getElementById('modalRendered').style.display = 'none';
+  document.getElementById('modalMarkdown').style.display = 'none';
+  
+  // Show selected view
+  const targetElement = mode === 'raw' ? 'modalRaw' : 
+                       mode === 'rendered' ? 'modalRendered' : 'modalMarkdown';
+  document.getElementById(targetElement).style.display = 'block';
+}
+
+// Utility function from viewer.js
+function renderHtmlFromMd(md) {
+  const lines = md.split(/\r?\n/);
+  const out = [];
+  let inCode = false;
+  for (let line of lines) {
+    if (line.startsWith('```')) {
+      inCode = !inCode;
+      out.push(inCode ? '<pre><code>' : '</code></pre>');
+      continue;
+    }
+    if (inCode) { 
+      out.push(line.replace(/</g, '&lt;').replace(/>/g, '&gt;')); 
+      continue; 
+    }
+    if (line.startsWith('# ')) out.push(`<h1>${line.slice(2).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h1>`);
+    else if (line.startsWith('## ')) out.push(`<h2>${line.slice(3).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h2>`);
+    else if (line.startsWith('### ')) out.push(`<h3>${line.slice(4).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h3>`);
+    else if (line.trim().length === 0) out.push('<br/>');
+    else out.push(`<p>${line.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`);
+  }
+  return out.join('\n');
 }
 
 async function exportConversation(id) {
@@ -399,6 +572,71 @@ async function exportConversation(id) {
   } catch (e) {
     console.error('Export error:', e);
     alert('Export failed. Check if extension is properly loaded.');
+  }
+}
+
+async function deleteConversationLocal(id) {
+  const conversation = conversations.find(c => c.id === id);
+  const title = conversation?.title || 'conversation';
+  
+  if (!confirm(`Remove "${title}" from library?\n\nThis will only remove it locally. You can re-sync from Claude.ai to restore it.`)) {
+    return;
+  }
+  
+  try {
+    const res = await chrome.runtime.sendMessage({ 
+      type: 'DELETE_CONVERSATION', 
+      id,
+      options: { deleteFromWeb: false }
+    });
+    
+    if (res?.ok) {
+      await loadData();
+      renderFolderTree();
+      renderConversations();
+    } else {
+      alert(res.error || 'Failed to remove conversation');
+    }
+  } catch (e) {
+    alert('Delete failed. Check if extension is properly loaded.');
+  }
+}
+
+async function deleteConversationWeb(id) {
+  const conversation = conversations.find(c => c.id === id);
+  const title = conversation?.title || 'conversation';
+  
+  // Get settings to check for export reminder
+  try {
+    const settings = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    
+    if (settings.showExportReminder) {
+      const exportFirst = confirm(`⚠️ About to permanently delete "${title}" from Claude.ai\n\nThis action cannot be undone! Would you like to export it first?`);
+      if (exportFirst) {
+        await exportConversation(id);
+        // Give user time to see export initiated
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    const confirmDelete = confirm(`🗑️ Permanently delete "${title}" from Claude.ai?\n\nThis will remove it from Claude.ai entirely and cannot be undone.`);
+    if (!confirmDelete) return;
+    
+    const res = await chrome.runtime.sendMessage({ 
+      type: 'DELETE_CONVERSATION', 
+      id,
+      options: { deleteFromWeb: true }
+    });
+    
+    if (res?.ok) {
+      await loadData();
+      renderFolderTree();
+      renderConversations();
+    } else {
+      alert(res.error || 'Failed to delete conversation from Claude.ai');
+    }
+  } catch (e) {
+    alert('Delete failed. Check if extension is properly loaded.');
   }
 }
 
@@ -479,9 +717,53 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// Context detection
+function detectDisplayMode() {
+  // Check URL parameters first for explicit mode
+  const urlParams = new URLSearchParams(window.location.search);
+  const explicitMode = urlParams.get('mode');
+  
+  if (explicitMode === 'popup' || explicitMode === 'full') {
+    return explicitMode;
+  }
+  
+  // Check if we're in a popup (small constrained window)
+  const isPopup = window.outerWidth <= 500 || window.outerHeight <= 700;
+  return isPopup ? 'popup' : 'full';
+}
+
+function applyDisplayMode(mode) {
+  document.body.classList.remove('popup-mode', 'full-mode');
+  document.body.classList.add(mode + '-mode');
+  
+  // Store mode for potential use
+  document.body.dataset.displayMode = mode;
+}
+
+// Handle focus parameter for search
+function handleSearchFocus() {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('focus') === 'search') {
+    setTimeout(() => {
+      const searchInput = document.getElementById('q');
+      if (searchInput) {
+        searchInput.focus();
+        searchInput.scrollIntoView();
+      }
+    }, 100);
+  }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+  // Detect and apply display mode first
+  const displayMode = detectDisplayMode();
+  applyDisplayMode(displayMode);
+  
   await loadData();
+  
+  // Handle search focus if needed
+  handleSearchFocus();
   
   // Set default folder
   currentFolder = 'Inbox';
@@ -625,6 +907,77 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('sqlQuery')?.addEventListener('click', () => {
     window.location.href = 'query.html';
   });
+
+  document.getElementById('deleteSettings')?.addEventListener('click', openDeleteSettingsModal);
+  
+  document.getElementById('popOutLibrary')?.addEventListener('click', async () => {
+    try {
+      await chrome.runtime.sendMessage({ type: 'POP_OUT_LIBRARY' });
+      // Close popup after opening full window
+      if (document.body.dataset.displayMode === 'popup') {
+        window.close();
+      }
+    } catch (e) {
+      console.error('Pop out error:', e);
+      alert('Failed to pop out library. Check if extension is properly loaded.');
+    }
+  });
+
+  // Modal conversation viewer controls
+  document.getElementById('closeConversationModal')?.addEventListener('click', closeConversationModal);
+  document.getElementById('prevConversation')?.addEventListener('click', () => navigateConversation(-1));
+  document.getElementById('nextConversation')?.addEventListener('click', () => navigateConversation(1));
+  document.getElementById('toggleFullscreen')?.addEventListener('click', toggleModalFullscreen);
+  
+  document.getElementById('modalViewMode')?.addEventListener('change', (e) => {
+    switchModalViewMode(e.target.value);
+  });
+  
+  document.getElementById('modalExportMd')?.addEventListener('click', async () => {
+    if (modalState.currentConversationId) {
+      try {
+        const res = await chrome.runtime.sendMessage({ 
+          type: 'EXPORT_CONVERSATION_MD', 
+          id: modalState.currentConversationId 
+        });
+        if (res?.ok === false) {
+          alert(res.error || 'Export failed');
+        }
+      } catch (error) {
+        alert('Export failed: ' + error.message);
+      }
+    }
+  });
+
+  // Modal keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (!modalState.isOpen) return;
+    
+    switch (e.key) {
+      case 'Escape':
+        closeConversationModal();
+        break;
+      case 'ArrowLeft':
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          navigateConversation(-1);
+        }
+        break;
+      case 'ArrowRight':
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          navigateConversation(1);
+        }
+        break;
+      case 'F11':
+        e.preventDefault();
+        toggleModalFullscreen();
+        break;
+    }
+  });
+
+  // Modal backdrop click to close
+  document.querySelector('.modal-backdrop')?.addEventListener('click', closeConversationModal);
   
   // Bulk operations
   document.getElementById('bulkOperations')?.addEventListener('click', () => {
@@ -684,14 +1037,54 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderConversations();
   });
   
-  document.getElementById('bulkDelete')?.addEventListener('click', async () => {
-    if (!confirm(`Delete ${selectedConversations.size} conversations?`)) return;
+  document.getElementById('bulkDeleteExecute')?.addEventListener('click', async () => {
+    const deleteMode = document.querySelector('input[name="bulkDeleteMode"]:checked')?.value;
+    const isWebDelete = deleteMode === 'web';
+    const count = selectedConversations.size;
+    
+    // Different confirmations based on delete mode
+    let confirmMessage;
+    if (isWebDelete) {
+      confirmMessage = `⚠️ PERMANENTLY DELETE ${count} conversations from Claude.ai?\n\nThis action cannot be undone and will remove them from Claude.ai entirely.`;
+    } else {
+      confirmMessage = `Remove ${count} conversations from library?\n\nThey will only be removed locally and can be restored by re-syncing.`;
+    }
+    
+    if (!confirm(confirmMessage)) return;
     
     try {
+      const settings = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+      
+      // Show export reminder for web deletions
+      if (isWebDelete && settings.showExportReminder) {
+        const exportFirst = confirm(`Would you like to export these ${count} conversations before deleting them permanently?`);
+        if (exportFirst) {
+          for (const id of selectedConversations) {
+            await exportConversation(id);
+          }
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Give time for exports
+        }
+      }
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
       for (const id of selectedConversations) {
-        const res = await chrome.runtime.sendMessage({ type: 'DELETE_CONVERSATION', id });
-        if (res?.ok === false) {
-          console.error(`Failed to delete ${id}:`, res.error);
+        try {
+          const res = await chrome.runtime.sendMessage({ 
+            type: 'DELETE_CONVERSATION', 
+            id,
+            options: { deleteFromWeb: isWebDelete }
+          });
+          if (res?.ok) {
+            successCount++;
+          } else {
+            console.error(`Failed to delete ${id}:`, res.error);
+            errorCount++;
+          }
+        } catch (e) {
+          console.error(`Error deleting ${id}:`, e);
+          errorCount++;
         }
       }
       
@@ -700,11 +1093,65 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('bulkModal').style.display = 'none';
       renderFolderTree();
       renderConversations();
+      
+      // Show result summary
+      let message = `${successCount} conversations ${isWebDelete ? 'deleted' : 'removed'} successfully`;
+      if (errorCount > 0) {
+        message += `\n${errorCount} failed (check console for details)`;
+      }
+      alert(message);
+      
     } catch (e) {
       console.error('Bulk delete error:', e);
       alert('Bulk delete failed. Check if extension is properly loaded.');
     }
   });
+
+  // Delete settings modal
+  document.getElementById('closeDeleteSettings')?.addEventListener('click', () => {
+    document.getElementById('deleteSettingsModal').style.display = 'none';
+  });
+
+  document.getElementById('saveDeleteSettings')?.addEventListener('click', saveDeleteSettings);
 });
+
+async function openDeleteSettingsModal() {
+  try {
+    // Load current settings
+    const settings = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+    
+    // Populate form
+    document.querySelector(`input[name="deleteMode"][value="${settings.deleteMode}"]`).checked = true;
+    document.getElementById('showExportReminder').checked = settings.showExportReminder;
+    document.getElementById('confirmBulkDeletes').checked = settings.confirmBulkDeletes;
+    
+    // Show modal
+    document.getElementById('deleteSettingsModal').style.display = 'flex';
+  } catch (e) {
+    alert('Failed to load settings. Check if extension is properly loaded.');
+  }
+}
+
+async function saveDeleteSettings() {
+  try {
+    const deleteMode = document.querySelector('input[name="deleteMode"]:checked')?.value;
+    const showExportReminder = document.getElementById('showExportReminder').checked;
+    const confirmBulkDeletes = document.getElementById('confirmBulkDeletes').checked;
+    
+    await chrome.runtime.sendMessage({ 
+      type: 'SET_SETTINGS', 
+      settings: { 
+        deleteMode,
+        showExportReminder,
+        confirmBulkDeletes
+      }
+    });
+    
+    document.getElementById('deleteSettingsModal').style.display = 'none';
+    alert('Delete settings saved successfully!');
+  } catch (e) {
+    alert('Failed to save settings. Check if extension is properly loaded.');
+  }
+}
 
 // No longer need global functions since we removed inline handlers
