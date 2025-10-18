@@ -682,16 +682,25 @@ async function openConversationModal(conversationId) {
   modalState.currentIndex = modalState.filteredConversations.findIndex(c => c.id === conversationId);
   modalState.currentConversationId = conversationId;
   modalState.isOpen = true;
-  
-  // Show modal
+
+  // Show modal with loading state
   const modal = document.getElementById('conversationModal');
   modal.style.display = 'flex';
   setTimeout(() => modal.classList.add('show'), 10);
-  
+
+  // Show loading indicator
+  const rawView = document.getElementById('modalRaw');
+  const renderedView = document.getElementById('modalRendered');
+  const markdownView = document.getElementById('modalMarkdown');
+
+  rawView.innerHTML = '<div class="loading"><span>Loading conversation...</span><div class="spinner"></div></div>';
+  renderedView.innerHTML = '<div class="loading"><span>Loading conversation...</span><div class="spinner"></div></div>';
+  markdownView.value = '';
+
   // Load conversation content
   await loadConversationInModal(conversationId);
   updateModalNavigation();
-  
+
   // Focus management
   document.getElementById('closeConversationModal').focus();
 }

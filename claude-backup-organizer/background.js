@@ -48,17 +48,63 @@ async function broadcastProgress(progress) {
   }
 }
 
-// Lightweight in-memory conversation cache (per-session)
-const convCache = new Map(); // id -> { updatedAt, data }
-function cacheSet(id, updatedAt, data) {
-  try {
-    convCache.set(id, { updatedAt, data });
-    if (convCache.size > 200) {
-      const firstKey = convCache.keys().next().value;
-      convCache.delete(firstKey);
-    }
-  } catch (_) { /* ignore */ }
+// Lightweight in-memory LRU conversation cache (per-session)
+// Maintains insertion order in Map and tracks access order via touch operations
+class LRUCache {
+  constructor(maxSize = 200) {
+    this.cache = new Map(); // id -> { updatedAt, data, accessedAt }
+    this.maxSize = maxSize;
+  }
+
+  set(id, updatedAt, data) {
+    try {
+      // Remove if exists (to update order)
+      this.cache.delete(id);
+      // Add to end (most recently used)
+      this.cache.set(id, { updatedAt, data, accessedAt: Date.now() });
+      // Evict least recently used if over capacity
+      if (this.cache.size > this.maxSize) {
+        // Find the least recently accessed item
+        let lruKey = null;
+        let lruTime = Infinity;
+        for (const [key, value] of this.cache.entries()) {
+          if (value.accessedAt < lruTime) {
+            lruTime = value.accessedAt;
+            lruKey = key;
+          }
+        }
+        if (lruKey) this.cache.delete(lruKey);
+      }
+    } catch (_) { /* ignore */ }
+  }
+
+  get(id) {
+    try {
+      const entry = this.cache.get(id);
+      if (entry) {
+        // Update access time on read (mark as recently used)
+        entry.accessedAt = Date.now();
+        return entry;
+      }
+      return null;
+    } catch (_) { /* ignore */ }
+  }
+
+  clear() {
+    this.cache.clear();
+  }
+
+  size() {
+    return this.cache.size;
+  }
 }
+
+const convCache = new LRUCache(200);
+
+function cacheSet(id, updatedAt, data) {
+  convCache.set(id, updatedAt, data);
+}
+
 function cacheGet(id) {
   return convCache.get(id);
 }
