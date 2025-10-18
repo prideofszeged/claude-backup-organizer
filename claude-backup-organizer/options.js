@@ -4,6 +4,8 @@ let folders = { 'Inbox': { children: {}, color: '#61dafb' } };
 let tags = {};
 let selectedConversations = new Set();
 let currentFolder = null;
+let lastSelectedId = null; // For shift-click range selection
+let filteredConversationsList = []; // Track current filtered list for range selection
 
 function strIncludes(hay, needle) {
   return (hay || "").toLowerCase().includes((needle || "").toLowerCase());
@@ -257,9 +259,22 @@ function renderConversations() {
   });
   
   countEl.textContent = `${filtered.length} conversation${filtered.length !== 1 ? 's' : ''}`;
-  
+
+  // Store filtered list for range selection
+  filteredConversationsList = filtered.map(c => c.id);
+
+  // Update selection toolbar
+  const toolbar = document.getElementById('selectionToolbar');
+  const selectionCount = document.getElementById('selectionCount');
+  if (selectedConversations.size > 0) {
+    toolbar.style.display = 'flex';
+    selectionCount.textContent = `${selectedConversations.size} selected`;
+  } else {
+    toolbar.style.display = 'none';
+  }
+
   container.innerHTML = '';
-  
+
   filtered.forEach(conv => {
     const card = document.createElement('div');
     card.className = `conversation-card ${selectedConversations.has(conv.id) ? 'selected' : ''}`;
@@ -291,8 +306,35 @@ function renderConversations() {
     
     // Add event listeners to the card elements
     const checkbox = card.querySelector('.checkbox');
+
+    // Handle click event for shift-click range selection
+    checkbox.addEventListener('click', (e) => {
+      if (e.shiftKey && lastSelectedId) {
+        // Prevent default checkbox behavior
+        e.preventDefault();
+
+        // Range selection with shift-click
+        const lastIndex = filteredConversationsList.indexOf(lastSelectedId);
+        const currentIndex = filteredConversationsList.indexOf(conv.id);
+        const start = Math.min(lastIndex, currentIndex);
+        const end = Math.max(lastIndex, currentIndex);
+
+        for (let i = start; i <= end; i++) {
+          selectedConversations.add(filteredConversationsList[i]);
+        }
+
+        lastSelectedId = conv.id;
+        renderConversations();
+      }
+    });
+
     checkbox.addEventListener('change', (e) => {
-      toggleSelection(conv.id, e.target.checked);
+      // Normal checkbox toggle (not shift-click)
+      if (!e.shiftKey) {
+        toggleSelection(conv.id, e.target.checked);
+        lastSelectedId = conv.id;
+        renderConversations();
+      }
     });
     
     const editBtn = card.querySelector('.edit-btn');
@@ -337,6 +379,36 @@ function renderConversations() {
 
     card.addEventListener('dragend', (e) => {
       card.classList.remove('dragging');
+    });
+
+    // Add click handler to card for selection (outside of buttons)
+    card.addEventListener('click', (e) => {
+      // Don't select if clicking on buttons or checkbox
+      const clickedElement = e.target;
+      const isButton = clickedElement.closest('button') || clickedElement.classList.contains('checkbox');
+      if (isButton) return;
+
+      // Shift-click for range selection
+      if (e.shiftKey && lastSelectedId) {
+        const lastIndex = filteredConversationsList.indexOf(lastSelectedId);
+        const currentIndex = filteredConversationsList.indexOf(conv.id);
+        const start = Math.min(lastIndex, currentIndex);
+        const end = Math.max(lastIndex, currentIndex);
+
+        for (let i = start; i <= end; i++) {
+          selectedConversations.add(filteredConversationsList[i]);
+        }
+      } else {
+        // Normal toggle
+        if (selectedConversations.has(conv.id)) {
+          selectedConversations.delete(conv.id);
+        } else {
+          selectedConversations.add(conv.id);
+        }
+      }
+
+      lastSelectedId = conv.id;
+      renderConversations();
     });
 
     container.appendChild(card);
@@ -947,6 +1019,41 @@ function changeFolderColor(folderPath) {
   colorInput.click();
 }
 
+// Quick bulk delete function
+async function quickDeleteSelected() {
+  const count = selectedConversations.size;
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (const id of selectedConversations) {
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: 'DELETE_CONVERSATION',
+        id,
+        options: { deleteFromWeb: false }
+      });
+      if (res?.ok) {
+        successCount++;
+      } else {
+        errorCount++;
+      }
+    } catch (e) {
+      errorCount++;
+    }
+  }
+
+  await loadData();
+  selectedConversations.clear();
+  renderFolderTree();
+  renderConversations();
+
+  let message = `${successCount} conversations deleted`;
+  if (errorCount > 0) {
+    message += `\n${errorCount} failed`;
+  }
+  alert(message);
+}
+
 // Progress handling
 function updateSyncProgress(progress) {
   const progressSection = document.getElementById('syncProgress');
@@ -1095,7 +1202,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('selectAll').addEventListener('click', () => {
     const filtered = conversations.filter(c => currentFolder === null || c.folder === currentFolder);
     const allSelected = filtered.every(c => selectedConversations.has(c.id));
-    
+
     if (allSelected) {
       filtered.forEach(c => selectedConversations.delete(c.id));
     } else {
@@ -1103,7 +1210,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     renderConversations();
   });
-  
+
+  // Quick action buttons
+  document.getElementById('quickDelete')?.addEventListener('click', async () => {
+    const count = selectedConversations.size;
+    if (confirm(`Delete ${count} conversation${count > 1 ? 's' : ''}?`)) {
+      await quickDeleteSelected();
+    }
+  });
+
+  document.getElementById('clearSelection')?.addEventListener('click', () => {
+    selectedConversations.clear();
+    renderConversations();
+  });
+
   // Legacy sync buttons with error handling
   document.getElementById('syncInc')?.addEventListener('click', async () => {
     try {
@@ -1252,7 +1372,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Modal keyboard shortcuts
+  // Bulk selection keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    // Escape: Clear selections
+    if (e.key === 'Escape' && selectedConversations.size > 0 && !modalState.isOpen) {
+      selectedConversations.clear();
+      renderConversations();
+      return;
+    }
+
+    // Ctrl+A / Cmd+A: Select all visible
+    if ((e.ctrlKey || e.metaKey) && e.key === 'a' && !modalState.isOpen) {
+      e.preventDefault();
+      const filtered = filteredConversationsList;
+      filtered.forEach(id => selectedConversations.add(id));
+      renderConversations();
+      return;
+    }
+
+    // Delete: Quick delete selected with confirmation
+    if (e.key === 'Delete' && selectedConversations.size > 0 && !modalState.isOpen) {
+      e.preventDefault();
+      const count = selectedConversations.size;
+      if (confirm(`Delete ${count} conversation${count > 1 ? 's' : ''}?`)) {
+        quickDeleteSelected();
+      }
+      return;
+    }
+  });
+
+  // Modal keyboard shortcuts (only when modal is open)
   document.addEventListener('keydown', (e) => {
     if (!modalState.isOpen) return;
     

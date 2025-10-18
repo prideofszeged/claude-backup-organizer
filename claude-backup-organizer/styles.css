@@ -95,6 +95,7 @@ button:disabled:hover{
 
 /* Conversation Grid */
 .list-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #222; }
+#selectionToolbar{ display:flex; align-items:center; }
 .conversation-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:12px; max-height:calc(100vh - 220px); overflow-y:auto; padding:2px; }
 .conversation-card{ background:#0f1116; border:1px solid #333; border-radius:12px; padding:12px; transition:all 0.2s; position:relative; }
 .conversation-card:hover{ border-color:var(--accent); transform:translateY(-2px); }
