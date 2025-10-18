@@ -36,25 +36,42 @@ async function saveData() {
 
 // Folder management
 function createFolder(name, parent = null) {
-  const parentObj = parent ? getFolder(parent) : folders;
+  if (!parent || parent === 'Inbox') {
+    // Root level folder
+    if (folders[name]) return false; // Already exists
+    folders[name] = { children: {}, color: '#61dafb' };
+    return true;
+  }
+
+  // Nested folder - get parent folder and add to its children
+  const parentObj = getFolder(parent);
   if (!parentObj) return false;
-  
-  parentObj.children = parentObj.children || {};
+
+  if (!parentObj.children) parentObj.children = {};
+  if (parentObj.children[name]) return false; // Already exists
   parentObj.children[name] = { children: {}, color: '#61dafb' };
   return true;
 }
 
 function getFolder(path) {
   if (!path || path === 'Inbox') return folders['Inbox'];
-  
+
   const parts = path.split('/');
   let current = folders;
-  
-  for (const part of parts) {
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
     if (!current[part]) return null;
+
+    // If this is the last part, return the folder object
+    if (i === parts.length - 1) {
+      return current[part];
+    }
+
+    // Otherwise, navigate to its children
     current = current[part].children || {};
   }
-  return current;
+  return null;
 }
 
 function getAllFolderPaths() {
@@ -97,13 +114,17 @@ function renderFolderTree() {
     
     const count = conversations.filter(c => c.folder === path).length;
     
+    const folderColor = folderObj.color || '#61dafb';
     div.innerHTML = `
       <div class="folder-name">
-        <span class="folder-icon">📁</span>
+        <span class="folder-icon">
+          <span class="folder-color-indicator" style="background-color: ${folderColor}"></span>📁
+        </span>
         <span>${name}</span>
         <span class="folder-count">(${count})</span>
         <div class="folder-actions">
           <button class="small-btn add-subfolder-btn" data-folder-path="${path}">+</button>
+          ${path !== 'Inbox' ? `<button class="small-btn rename-folder-btn" data-folder-path="${path}" title="Rename folder">✎</button>` : ''}
           ${path !== 'Inbox' ? `<button class="small-btn delete-folder-btn" data-folder-path="${path}">×</button>` : ''}
         </div>
       </div>
@@ -118,6 +139,14 @@ function renderFolderTree() {
       });
     }
     
+    const renameBtn = div.querySelector('.rename-folder-btn');
+    if (renameBtn) {
+      renameBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        renameFolder(path);
+      });
+    }
+
     const deleteBtn = div.querySelector('.delete-folder-btn');
     if (deleteBtn) {
       deleteBtn.addEventListener('click', (e) => {
@@ -125,12 +154,36 @@ function renderFolderTree() {
         deleteFolder(path);
       });
     }
-    
+
     div.addEventListener('click', (e) => {
       if (e.target.classList.contains('small-btn')) return;
       selectFolder(path);
     });
-    
+
+    // Add drag-over handlers for drop target
+    div.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      div.classList.add('drag-over');
+    });
+
+    div.addEventListener('dragleave', (e) => {
+      div.classList.remove('drag-over');
+    });
+
+    div.addEventListener('drop', (e) => {
+      e.preventDefault();
+      div.classList.remove('drag-over');
+      const convId = e.dataTransfer.getData('text/plain');
+      moveConversationToFolder(convId, path);
+    });
+
+    // Add right-click context menu
+    div.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showFolderContextMenu(e.clientX, e.clientY, path);
+    });
+
     container.appendChild(div);
     
     // Render children
@@ -142,8 +195,28 @@ function renderFolderTree() {
     }
   }
   
+  // Add "All" view at the top
+  const allDiv = document.createElement('div');
+  allDiv.className = `tree-item ${currentFolder === null ? 'selected' : ''}`;
+  const allCount = conversations.length;
+  allDiv.innerHTML = `
+    <div class="folder-name">
+      <span class="folder-icon">⭐</span>
+      <span>All</span>
+      <span class="folder-count">(${allCount})</span>
+    </div>
+  `;
+  allDiv.addEventListener('click', () => {
+    currentFolder = null;
+    document.querySelectorAll('.tree-item').forEach(el => el.classList.remove('selected'));
+    allDiv.classList.add('selected');
+    selectedConversations.clear();
+    renderConversations();
+  });
+  container.appendChild(allDiv);
+
   renderFolderItem('Inbox', folders.Inbox, 'Inbox');
-  
+
   Object.keys(folders).forEach(key => {
     if (key !== 'Inbox') {
       renderFolderItem(key, folders[key], key);
@@ -190,7 +263,9 @@ function renderConversations() {
   filtered.forEach(conv => {
     const card = document.createElement('div');
     card.className = `conversation-card ${selectedConversations.has(conv.id) ? 'selected' : ''}`;
-    
+    card.draggable = true;
+    card.dataset.convId = conv.id;
+
     const tagHtml = (conv.tags || []).map(tag => {
       const color = tags[tag] || '#61dafb';
       return `<span class="tag" style="background-color: ${color}; color: ${getContrastColor(color)}">${tag}</span>`;
@@ -234,7 +309,36 @@ function renderConversations() {
     
     const deleteWebBtn = card.querySelector('.delete-web-btn');
     deleteWebBtn.addEventListener('click', () => deleteConversationWeb(conv.id));
-    
+
+    // Add drag event handlers
+    card.addEventListener('dragstart', (e) => {
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', conv.id);
+
+      // Create custom drag image - small folder icon
+      const dragImage = document.createElement('div');
+      dragImage.style.width = '32px';
+      dragImage.style.height = '32px';
+      dragImage.style.borderRadius = '8px';
+      dragImage.style.background = 'var(--accent)';
+      dragImage.style.display = 'flex';
+      dragImage.style.alignItems = 'center';
+      dragImage.style.justifyContent = 'center';
+      dragImage.style.fontSize = '16px';
+      dragImage.style.color = '#000';
+      dragImage.textContent = '📁';
+      dragImage.style.position = 'fixed';
+      dragImage.style.pointerEvents = 'none';
+      document.body.appendChild(dragImage);
+      e.dataTransfer.setDragImage(dragImage, 16, 16);
+      setTimeout(() => dragImage.remove(), 0);
+    });
+
+    card.addEventListener('dragend', (e) => {
+      card.classList.remove('dragging');
+    });
+
     container.appendChild(card);
   });
 }
@@ -267,23 +371,84 @@ function toggleSelection(id, checked) {
 }
 
 function addSubfolder(parentPath) {
+  // Check depth limit (max 3 levels)
+  const depth = parentPath === 'Inbox' ? 1 : parentPath.split('/').length + 1;
+  if (depth > 3) {
+    alert('Maximum folder nesting level (3) reached. Cannot create subfolders deeper than this.');
+    return;
+  }
+
   const name = prompt('Folder name:');
   if (!name) return;
-  
+
   const fullPath = parentPath === 'Inbox' ? name : `${parentPath}/${name}`;
   if (getAllFolderPaths().includes(fullPath)) {
     alert('Folder already exists');
     return;
   }
-  
+
   createFolder(name, parentPath === 'Inbox' ? null : parentPath);
   saveData();
   renderFolderTree();
 }
 
+function renameFolder(path) {
+  const newName = prompt(`Rename folder "${path}" to:`, path.split('/').pop());
+  if (!newName) return;
+  if (newName === path.split('/').pop()) return; // No change
+
+  // Check if new name already exists at this level
+  const parts = path.split('/');
+  const parentPath = parts.length === 1 ? 'Inbox' : parts.slice(0, -1).join('/');
+  const allFolderPaths = getAllFolderPaths();
+
+  const newPath = parentPath === 'Inbox' ? newName : `${parentPath}/${newName}`;
+  if (allFolderPaths.includes(newPath)) {
+    alert('Folder with this name already exists');
+    return;
+  }
+
+  // Update folder structure
+  if (parts.length === 1) {
+    // Root level folder
+    if (folders[path]) {
+      folders[newName] = folders[path];
+      delete folders[path];
+    }
+  } else {
+    // Nested folder
+    let current = folders;
+    for (let i = 0; i < parts.length - 1; i++) {
+      current = current[parts[i]].children;
+    }
+    if (current[parts[parts.length - 1]]) {
+      current[newName] = current[parts[parts.length - 1]];
+      delete current[parts[parts.length - 1]];
+    }
+  }
+
+  // Update all conversations with old path to new path
+  conversations.forEach(conv => {
+    if (conv.folder === path) {
+      conv.folder = newPath;
+    } else if (conv.folder?.startsWith(path + '/')) {
+      conv.folder = conv.folder.replace(path + '/', newPath + '/');
+    }
+  });
+
+  // Update currentFolder if we're viewing the renamed folder
+  if (currentFolder === path) {
+    currentFolder = newPath;
+  }
+
+  saveData();
+  renderFolderTree();
+  renderConversations();
+}
+
 function deleteFolder(path) {
   if (!confirm(`Delete folder "${path}"? Conversations will be moved to Inbox.`)) return;
-  
+
   // Move conversations to Inbox
   conversations.forEach(conv => {
     if (conv.folder === path || conv.folder?.startsWith(path + '/')) {
@@ -642,6 +807,144 @@ async function deleteConversationWeb(id) {
 
 function closeModal() {
   document.querySelectorAll('.modal').forEach(modal => modal.remove());
+}
+
+// Drag and drop move function
+async function moveConversationToFolder(convId, targetFolderPath) {
+  const conversation = conversations.find(c => c.id === convId);
+  if (!conversation) return;
+
+  // Don't move if it's already in the target folder
+  if (conversation.folder === targetFolderPath) return;
+
+  // Update conversation folder
+  const oldFolder = conversation.folder;
+  conversation.folder = targetFolderPath;
+
+  // Update in background via message
+  try {
+    const res = await chrome.runtime.sendMessage({
+      type: 'UPDATE_META',
+      id: convId,
+      payload: { folder: targetFolderPath }
+    });
+
+    if (res?.ok === false) {
+      // Revert on error
+      conversation.folder = oldFolder;
+      alert(res.error || 'Failed to move conversation');
+      return;
+    }
+
+    // Save locally
+    await saveData();
+
+    // Find and fade out the card if we're in a filtered view
+    const card = document.querySelector(`[data-conv-id="${convId}"]`);
+    if (card && currentFolder !== null && currentFolder !== targetFolderPath) {
+      // We're viewing a specific folder and the conversation moved away
+      card.classList.add('fade-out');
+      setTimeout(() => {
+        renderFolderTree();
+        renderConversations();
+      }, 300);
+    } else {
+      // Card stays visible (viewing "All" or destination folder), just refresh
+      renderFolderTree();
+      renderConversations();
+    }
+  } catch (e) {
+    // Revert on error
+    conversation.folder = oldFolder;
+    console.error('Move conversation error:', e);
+    alert('Failed to move conversation. Check if extension is properly loaded.');
+  }
+}
+
+// Folder context menu functions
+function showFolderContextMenu(x, y, folderPath) {
+  // Remove any existing context menu
+  const existingMenu = document.querySelector('.folder-context-menu');
+  if (existingMenu) existingMenu.remove();
+
+  const menu = document.createElement('div');
+  menu.className = 'folder-context-menu';
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+
+  const items = [];
+
+  // Color option
+  items.push({
+    icon: '🎨',
+    label: 'Change Color',
+    action: () => changeFolderColor(folderPath),
+  });
+
+  // Rename option (for non-Inbox folders)
+  if (folderPath !== 'Inbox') {
+    items.push({
+      icon: '✎',
+      label: 'Rename',
+      action: () => renameFolder(folderPath),
+    });
+
+    // Delete option (for non-Inbox folders)
+    items.push({
+      icon: '🗑️',
+      label: 'Delete',
+      action: () => deleteFolder(folderPath),
+      danger: true,
+    });
+  }
+
+  items.forEach(item => {
+    const itemEl = document.createElement('div');
+    itemEl.className = `folder-context-menu-item ${item.danger ? 'danger' : ''}`;
+    itemEl.innerHTML = `<span>${item.icon}</span><span>${item.label}</span>`;
+    itemEl.addEventListener('click', () => {
+      menu.remove();
+      item.action();
+    });
+    menu.appendChild(itemEl);
+  });
+
+  document.body.appendChild(menu);
+
+  // Close menu on click outside
+  const closeMenu = (e) => {
+    if (!menu.contains(e.target)) {
+      menu.remove();
+      document.removeEventListener('click', closeMenu);
+    }
+  };
+  document.addEventListener('click', closeMenu);
+}
+
+function changeFolderColor(folderPath) {
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  const folderObj = folderPath === 'Inbox' ? folders.Inbox : getFolder(folderPath);
+  if (folderObj) {
+    colorInput.value = folderObj.color || '#61dafb';
+  }
+
+  colorInput.addEventListener('change', (e) => {
+    const newColor = e.target.value;
+    if (folderPath === 'Inbox') {
+      folders.Inbox.color = newColor;
+    } else {
+      const folderObj = getFolder(folderPath);
+      if (folderObj) {
+        folderObj.color = newColor;
+      }
+    }
+    saveData();
+    renderFolderTree();
+  });
+
+  // Trigger the color picker
+  colorInput.click();
 }
 
 // Progress handling

@@ -845,3 +845,100 @@ button:disabled:hover{
 .conversation-modal.show{ opacity:1; pointer-events:all; }
 .conversation-modal-content{ transform:scale(0.9); transition:transform 0.2s ease; }
 .conversation-modal.show .conversation-modal-content{ transform:scale(1); }
+
+/* Drag and Drop Styles */
+.conversation-card[draggable="true"] {
+  cursor: grab;
+}
+
+.conversation-card[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.conversation-card.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.tree-item.drag-over {
+  background-color: var(--accent);
+  color: #000;
+  box-shadow: inset 0 0 8px rgba(97, 218, 251, 0.3);
+}
+
+.conversation-card.fade-out {
+  animation: fadeOut 0.3s ease forwards;
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* Folder Color Indicator */
+.folder-icon {
+  position: relative;
+}
+
+.folder-color-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+/* Folder Context Menu */
+.folder-context-menu {
+  position: fixed;
+  background: var(--card);
+  border: 1px solid #333;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  min-width: 120px;
+  overflow: hidden;
+  animation: contextMenuFadeIn 0.15s ease;
+}
+
+@keyframes contextMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.folder-context-menu-item {
+  padding: 8px 12px;
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.folder-context-menu-item:hover {
+  background: #1a1f2e;
+}
+
+.folder-context-menu-item.danger {
+  color: #ff6b6b;
+}
+
+.folder-context-menu-item.danger:hover {
+  background: #2a1010;
+}
