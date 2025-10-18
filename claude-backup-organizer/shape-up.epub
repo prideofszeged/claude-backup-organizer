@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Shape Up: Stop Running in Circles and Ship Work that Matters</title>
+  <style>
+    body {
+      font-family: Georgia, serif;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1, h2, h3 { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      margin-top: 2em;
+    }
+    h1 { 
+      border-bottom: 2px solid #333;
+      padding-bottom: 0.5em;
+    }
+    img { 
+      max-width: 100%;
+      height: auto;
+    }
+    .chapter {
+      page-break-before: always;
+      margin-bottom: 3em;
+    }
+  </style>
+</head>
+<body>
+  <h1>Shape Up</h1>
+  <h2>Stop Running in Circles and Ship Work that Matters</h2>
+  <p><strong>By Ryan Singer</strong></p>
+  <p><strong>Basecamp</strong></p>
+  <hr>
+
+  <div class="chapter">
+    <h1>Introduction</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/0.3-chapter-01">https://basecamp.com/shapeup/0.3-chapter-01</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 2: Principles of Shaping</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/1.1-chapter-02">https://basecamp.com/shapeup/1.1-chapter-02</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 3: Set Boundaries</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/1.2-chapter-03">https://basecamp.com/shapeup/1.2-chapter-03</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 4: Find the Elements</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/1.3-chapter-04">https://basecamp.com/shapeup/1.3-chapter-04</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 5: Risks and Rabbit Holes</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/1.4-chapter-05">https://basecamp.com/shapeup/1.4-chapter-05</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 6: Write the Pitch</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/1.5-chapter-06">https://basecamp.com/shapeup/1.5-chapter-06</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 7: Bets, Not Backlogs</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/2.1-chapter-07">https://basecamp.com/shapeup/2.1-chapter-07</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 8: The Betting Table</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/2.2-chapter-08">https://basecamp.com/shapeup/2.2-chapter-08</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 9: Place Your Bets</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/2.3-chapter-09">https://basecamp.com/shapeup/2.3-chapter-09</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 10: Hand Over Responsibility</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/3.1-chapter-10">https://basecamp.com/shapeup/3.1-chapter-10</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 11: Get One Piece Done</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/3.2-chapter-11">https://basecamp.com/shapeup/3.2-chapter-11</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 12: Map the Scopes</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/3.3-chapter-12">https://basecamp.com/shapeup/3.3-chapter-12</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 13: Show Progress</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/3.4-chapter-13">https://basecamp.com/shapeup/3.4-chapter-13</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 14: Decide When to Stop</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/3.5-chapter-14">https://basecamp.com/shapeup/3.5-chapter-14</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Chapter 15: Move On</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/3.6-chapter-15">https://basecamp.com/shapeup/3.6-chapter-15</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Conclusion</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/3.7-conclusion">https://basecamp.com/shapeup/3.7-conclusion</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Appendix 01: How to Implement Shape Up in Basecamp</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/4.0-appendix-01">https://basecamp.com/shapeup/4.0-appendix-01</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Appendix 02: Adjust to Your Size</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/4.1-appendix-02">https://basecamp.com/shapeup/4.1-appendix-02</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Appendix 03: How to Begin to Shape Up</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/4.2-appendix-03">https://basecamp.com/shapeup/4.2-appendix-03</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Appendix 06: Glossary</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/4.5-appendix-06">https://basecamp.com/shapeup/4.5-appendix-06</a></p>
+  </div>
+
+  <div class="chapter">
+    <h1>Appendix 07: About the Author</h1>
+    <p>Error loading chapter. Please visit: <a href="https://basecamp.com/shapeup/4.6-appendix-07">https://basecamp.com/shapeup/4.6-appendix-07</a></p>
+  </div>
+
+</body>
+</html>

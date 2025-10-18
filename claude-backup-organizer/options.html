@@ -65,6 +65,11 @@
     <main class="conversation-list">
       <div class="list-header">
         <span id="conversationCount">0 conversations</span>
+        <div id="selectionToolbar" style="display:none; gap:8px;">
+          <span id="selectionCount" style="color: var(--muted); font-size: 13px;"></span>
+          <button id="quickDelete" class="small-btn" style="background: #dc3545;">Delete</button>
+          <button id="clearSelection" class="small-btn">Clear</button>
+        </div>
         <button id="selectAll">Select All</button>
       </div>
       <div id="conversationGrid" class="conversation-grid"></div>
