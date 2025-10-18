@@ -1,3 +1,33 @@
+// Standardized error handling
+const errorMessages = {
+  folderNesting: 'Maximum folder nesting level (3) reached. Cannot create subfolders deeper than this.',
+  folderEmpty: 'Folder name cannot be empty.',
+  folderTooLong: 'Folder name is too long (max 100 characters).',
+  folderInvalidChars: 'Folder name contains invalid characters: < > : " | ? * / \\',
+  folderExists: 'Folder with this name already exists.',
+  saveFailed: 'Failed to save. Check if extension is properly loaded.',
+  exportFailed: 'Export failed. Check if extension is properly loaded.',
+  deleteFailed: 'Delete failed. Check if extension is properly loaded.',
+  moveFailed: 'Failed to move conversation. Check if extension is properly loaded.',
+  syncFailed: 'Sync failed. Check if extension is properly loaded.',
+  testFailed: 'Test failed. Check if extension is properly loaded.'
+};
+
+function showError(messageKey, detail = '') {
+  const message = errorMessages[messageKey] || 'An error occurred.';
+  const fullMessage = detail ? `${message}\n\nDetails: ${detail}` : message;
+  alert(fullMessage);
+  console.error(messageKey, detail);
+}
+
+function showWarning(message) {
+  alert('⚠️ ' + message);
+}
+
+function showSuccess(message) {
+  alert('✓ ' + message);
+}
+
 // State management
 let conversations = [];
 let folders = { 'Inbox': { children: {}, color: '#61dafb' } };
@@ -446,7 +476,7 @@ function addSubfolder(parentPath) {
   // Check depth limit (max 3 levels)
   const depth = parentPath === 'Inbox' ? 1 : parentPath.split('/').length + 1;
   if (depth > 3) {
-    alert('Maximum folder nesting level (3) reached. Cannot create subfolders deeper than this.');
+    showError('folderNesting');
     return;
   }
 
@@ -455,21 +485,21 @@ function addSubfolder(parentPath) {
 
   // Validate folder name
   if (name.trim().length === 0) {
-    alert('Folder name cannot be empty');
+    showError('folderEmpty');
     return;
   }
   if (name.length > 100) {
-    alert('Folder name is too long (max 100 characters)');
+    showError('folderTooLong');
     return;
   }
   if (/[<>:"|?*\/\\]/.test(name)) {
-    alert('Folder name contains invalid characters: < > : " | ? * / \\');
+    showError('folderInvalidChars');
     return;
   }
 
   const fullPath = parentPath === 'Inbox' ? name : `${parentPath}/${name}`;
   if (getAllFolderPaths().includes(fullPath)) {
-    alert('Folder already exists');
+    showError('folderExists');
     return;
   }
 
@@ -484,15 +514,15 @@ function renameFolder(path) {
 
   // Validate folder name
   if (newName.trim().length === 0) {
-    alert('Folder name cannot be empty');
+    showError('folderEmpty');
     return;
   }
   if (newName.length > 100) {
-    alert('Folder name is too long (max 100 characters)');
+    showError('folderTooLong');
     return;
   }
   if (/[<>:"|?*\/\\]/.test(newName)) {
-    alert('Folder name contains invalid characters: < > : " | ? * / \\');
+    showError('folderInvalidChars');
     return;
   }
 
@@ -505,7 +535,7 @@ function renameFolder(path) {
 
   const newPath = parentPath === 'Inbox' ? newName : `${parentPath}/${newName}`;
   if (allFolderPaths.includes(newPath)) {
-    alert('Folder with this name already exists');
+    showError('folderExists');
     return;
   }
 
@@ -861,10 +891,9 @@ function renderHtmlFromMd(md) {
 async function exportConversation(id) {
   try {
     const res = await chrome.runtime.sendMessage({ type: 'EXPORT_CONVERSATION_MD', id });
-    if (res?.ok === false) alert(res.error || 'Export failed');
+    if (res?.ok === false) showError('exportFailed', res.error);
   } catch (e) {
-    console.error('Export error:', e);
-    alert('Export failed. Check if extension is properly loaded.');
+    showError('exportFailed', e.message);
   }
 }
 
@@ -888,10 +917,10 @@ async function deleteConversationLocal(id) {
       renderFolderTree();
       renderConversations();
     } else {
-      alert(res.error || 'Failed to remove conversation');
+      showError('deleteFailed', res.error);
     }
   } catch (e) {
-    alert('Delete failed. Check if extension is properly loaded.');
+    showError('deleteFailed', e.message);
   }
 }
 
@@ -926,10 +955,10 @@ async function deleteConversationWeb(id) {
       renderFolderTree();
       renderConversations();
     } else {
-      alert(res.error || 'Failed to delete conversation from Claude.ai');
+      showError('deleteFailed', res.error);
     }
   } catch (e) {
-    alert('Delete failed. Check if extension is properly loaded.');
+    showError('deleteFailed', e.message);
   }
 }
 
@@ -1380,41 +1409,38 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       const response = await chrome.runtime.sendMessage({ type: 'SYNC_INCREMENTAL' });
       if (response?.ok === false) {
-        alert(`Sync error: ${response.error}`);
+        showError('syncFailed', response.error);
       }
     } catch (e) {
-      console.error('Sync error:', e);
-      alert('Sync failed. Check if extension is properly loaded.');
+      showError('syncFailed', e.message);
     }
   });
-  
+
   document.getElementById('syncFull')?.addEventListener('click', async () => {
     try {
       // Clear any previous progress
       document.getElementById('syncProgress').style.display = 'none';
       document.getElementById('syncDetails').innerHTML = '';
-      
+
       const response = await chrome.runtime.sendMessage({ type: 'SYNC_FULL' });
       if (response?.ok === false) {
-        alert(`Sync error: ${response.error}`);
+        showError('syncFailed', response.error);
       }
     } catch (e) {
-      console.error('Sync error:', e);
-      alert('Sync failed. Check if extension is properly loaded.');
+      showError('syncFailed', e.message);
     }
   });
-  
+
   document.getElementById('syncTest')?.addEventListener('click', async () => {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'SYNC_TEST' });
       if (response?.ok === false) {
-        alert(`Test error: ${response.error}`);
+        showError('testFailed', response.error);
       } else {
-        alert('Test successful!');
+        showSuccess('Test successful!');
       }
     } catch (e) {
-      console.error('Test error:', e);
-      alert('Test failed. Check if extension is properly loaded.');
+      showError('testFailed', e.message);
     }
   });
   
