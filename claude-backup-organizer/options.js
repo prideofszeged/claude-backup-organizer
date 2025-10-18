@@ -159,7 +159,7 @@ function renderFolderTree() {
 
     div.addEventListener('click', (e) => {
       if (e.target.classList.contains('small-btn')) return;
-      selectFolder(path);
+      selectFolder(path, e);
     });
 
     // Add drag-over handlers for drop target
@@ -425,7 +425,7 @@ function getContrastColor(bgColor) {
 }
 
 // Event handlers
-function selectFolder(path) {
+function selectFolder(path, event) {
   currentFolder = path;
   document.querySelectorAll('.tree-item').forEach(el => el.classList.remove('selected'));
   event.target.closest('.tree-item').classList.add('selected');
@@ -453,6 +453,20 @@ function addSubfolder(parentPath) {
   const name = prompt('Folder name:');
   if (!name) return;
 
+  // Validate folder name
+  if (name.trim().length === 0) {
+    alert('Folder name cannot be empty');
+    return;
+  }
+  if (name.length > 100) {
+    alert('Folder name is too long (max 100 characters)');
+    return;
+  }
+  if (/[<>:"|?*\/\\]/.test(name)) {
+    alert('Folder name contains invalid characters: < > : " | ? * / \\');
+    return;
+  }
+
   const fullPath = parentPath === 'Inbox' ? name : `${parentPath}/${name}`;
   if (getAllFolderPaths().includes(fullPath)) {
     alert('Folder already exists');
@@ -467,6 +481,21 @@ function addSubfolder(parentPath) {
 function renameFolder(path) {
   const newName = prompt(`Rename folder "${path}" to:`, path.split('/').pop());
   if (!newName) return;
+
+  // Validate folder name
+  if (newName.trim().length === 0) {
+    alert('Folder name cannot be empty');
+    return;
+  }
+  if (newName.length > 100) {
+    alert('Folder name is too long (max 100 characters)');
+    return;
+  }
+  if (/[<>:"|?*\/\\]/.test(newName)) {
+    alert('Folder name contains invalid characters: < > : " | ? * / \\');
+    return;
+  }
+
   if (newName === path.split('/').pop()) return; // No change
 
   // Check if new name already exists at this level
@@ -504,7 +533,9 @@ function renameFolder(path) {
     if (conv.folder === path) {
       conv.folder = newPath;
     } else if (conv.folder?.startsWith(path + '/')) {
-      conv.folder = conv.folder.replace(path + '/', newPath + '/');
+      // Use slice instead of replace to avoid substring matching issues
+      // e.g., renaming "Work" to "Working" shouldn't affect "Working/Projects"
+      conv.folder = newPath + conv.folder.slice(path.length);
     }
   });
 
@@ -1281,7 +1312,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   
   // Event listeners
-  document.getElementById('q').addEventListener('input', renderConversations);
+  // Debounce search input to avoid re-rendering on every keystroke
+  let searchTimeout;
+  document.getElementById('q').addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => renderConversations(), 150);
+  });
   document.getElementById('sortBy').addEventListener('change', renderConversations);
   
   document.getElementById('addFolder').addEventListener('click', () => {
@@ -1530,37 +1566,88 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('bulkMoveToFolder')?.addEventListener('click', async () => {
     const folderPath = prompt('Move to folder:', 'Inbox');
     if (!folderPath) return;
-    
+
+    showProgress('Moving conversations...', 0, selectedConversations.size);
+    let successCount = 0;
+    let current = 0;
+
     for (const id of selectedConversations) {
-      const conv = conversations.find(c => c.id === id);
-      if (conv) conv.folder = folderPath;
+      try {
+        // Use UPDATE_META to persist changes to background
+        const res = await chrome.runtime.sendMessage({
+          type: 'UPDATE_META',
+          id,
+          payload: { folder: folderPath }
+        });
+
+        if (res?.ok) {
+          successCount++;
+          const conv = conversations.find(c => c.id === id);
+          if (conv) conv.folder = folderPath;
+        }
+      } catch (e) {
+        console.error('Error moving conversation:', e);
+      }
+
+      current++;
+      showProgress('Moving conversations...', current, selectedConversations.size);
     }
+
     await saveData();
     selectedConversations.clear();
+    hideProgress(2000);
     document.getElementById('bulkModal').style.display = 'none';
     renderFolderTree();
     renderConversations();
+
+    alert(`${successCount}/${selectedConversations.size} conversations moved to ${folderPath}`);
   });
   
   document.getElementById('bulkAddTags')?.addEventListener('click', async () => {
     const newTags = prompt('Add tags (comma-separated):');
     if (!newTags) return;
-    
+
     const tagsToAdd = newTags.split(',').map(s => s.trim()).filter(Boolean);
+    showProgress('Adding tags to conversations...', 0, selectedConversations.size);
+    let successCount = 0;
+    let current = 0;
+
     for (const id of selectedConversations) {
-      const conv = conversations.find(c => c.id === id);
-      if (conv) {
-        conv.tags = conv.tags || [];
-        tagsToAdd.forEach(tag => {
-          if (!conv.tags.includes(tag)) conv.tags.push(tag);
-          if (!tags[tag]) tags[tag] = '#61dafb';
-        });
+      try {
+        const conv = conversations.find(c => c.id === id);
+        if (conv) {
+          conv.tags = conv.tags || [];
+          tagsToAdd.forEach(tag => {
+            if (!conv.tags.includes(tag)) conv.tags.push(tag);
+            if (!tags[tag]) tags[tag] = '#61dafb';
+          });
+
+          // Use UPDATE_META to persist tag changes
+          const res = await chrome.runtime.sendMessage({
+            type: 'UPDATE_META',
+            id,
+            payload: { tags: conv.tags }
+          });
+
+          if (res?.ok) {
+            successCount++;
+          }
+        }
+      } catch (e) {
+        console.error('Error adding tags:', e);
       }
+
+      current++;
+      showProgress('Adding tags to conversations...', current, selectedConversations.size);
     }
+
     await saveData();
     selectedConversations.clear();
+    hideProgress(2000);
     document.getElementById('bulkModal').style.display = 'none';
     renderConversations();
+
+    alert(`Tags added to ${successCount}/${selectedConversations.size} conversations`);
   });
   
   document.getElementById('bulkExport')?.addEventListener('click', async () => {

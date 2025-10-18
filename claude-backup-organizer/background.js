@@ -339,7 +339,12 @@ async function incrementalSync() {
       };
       indexMap.set(item.id, record);
       cacheSet(item.id, record.updatedAt, full);
-      try { await dbPutConv(item.id, record.updatedAt, full); } catch (_) { /* ignore */ }
+      try {
+        await dbPutConv(item.id, record.updatedAt, full);
+      } catch (e) {
+        // IndexedDB unavailable - log but continue with in-memory cache
+        await logDebug('warn', `IndexedDB cache failed for ${item.id}: ${e.message}. Using in-memory cache only.`);
+      }
       downloaded++;
       
       // Broadcast progress every conversation
@@ -457,8 +462,13 @@ async function deleteConversation(id, options = {}) {
     index.splice(idx, 1);
     delete byId[id];
     convCache.delete(id);
-    
-    try { await dbDeleteConv(id); } catch (_) { /* ignore */ }
+
+    try {
+      await dbDeleteConv(id);
+    } catch (e) {
+      // IndexedDB unavailable - log but continue
+      await logDebug('warn', `IndexedDB delete failed for ${id}: ${e.message}`);
+    }
     
     await setIndex({ index, byId, lastSync });
     return { ok: true, deletedFromWeb: deleteFromWeb };
@@ -488,16 +498,24 @@ async function exportIndexCsv() {
   return { ok: true };
 }
 
+// Helper function to escape HTML to prevent XSS
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 function conversationToRawView(conv) {
   const title = normalizeTitle(conv?.name);
   const msgs = conv?.chat_messages || conv?.tree_state?.messages || conv?.messages || [];
-  
+
   let html = `<div class="conversation-header">
-    <h1>${title}</h1>
+    <h1>${escapeHtml(title)}</h1>
     <div class="conversation-meta">
       <span>Created: ${new Date(conv?.created_at || '').toLocaleString()}</span>
       <span>Updated: ${new Date(conv?.updated_at || '').toLocaleString()}</span>
-      <span>Model: ${conv?.model || 'Unknown'}</span>
+      <span>Model: ${escapeHtml(conv?.model || 'Unknown')}</span>
     </div>
   </div>`;
   
@@ -518,14 +536,14 @@ function conversationToRawView(conv) {
     if (thinkingPart && thinkingPart.thinking) {
       html += `<details class="thinking-section">
         <summary>🤔 Thinking</summary>
-        <div class="thinking-content">${thinkingPart.thinking.replace(/\n/g, '<br>')}</div>
+        <div class="thinking-content">${escapeHtml(thinkingPart.thinking).replace(/\n/g, '<br>')}</div>
       </details>`;
     }
-    
+
     // Handle main text content
     const textPart = parts.find(p => p.type === 'text') || parts.find(p => p.text);
     if (textPart && textPart.text) {
-      html += `<div class="message-text">${textPart.text.replace(/\n/g, '<br>')}</div>`;
+      html += `<div class="message-text">${escapeHtml(textPart.text).replace(/\n/g, '<br>')}</div>`;
     }
     
     // Handle other content types (tools, etc.)
@@ -576,14 +594,22 @@ async function getConversationCached(id, opts = {}) {
       cacheSet(id, p.updatedAt, p.data);
       return p.data;
     }
-  } catch (_) { /* ignore IDB errors */ }
+  } catch (e) {
+    // IndexedDB unavailable - log and fallback to fetch
+    await logDebug('warn', `IndexedDB read failed for ${id}: ${e.message}. Fetching from Claude.ai...`);
+  }
 
   // Fetch fresh and update caches
   const orgId = await getOrgId(opts);
   const conv = await getConversation(orgId, id, opts);
   const updatedAt = conv?.updated_at || conv?.updatedAt || meta?.updatedAt || null;
   cacheSet(id, updatedAt, conv);
-  try { await dbPutConv(id, updatedAt, conv); } catch (_) { /* ignore */ }
+  try {
+    await dbPutConv(id, updatedAt, conv);
+  } catch (e) {
+    // IndexedDB unavailable - log but continue with in-memory cache
+    await logDebug('warn', `IndexedDB put failed for ${id}: ${e.message}. Using in-memory cache only.`);
+  }
   return conv;
 }
 
