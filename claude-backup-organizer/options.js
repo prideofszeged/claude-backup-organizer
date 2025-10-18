@@ -703,17 +703,33 @@ async function loadConversationInModal(conversationId) {
       chrome.runtime.sendMessage({ type: 'GET_CONVERSATION_MD', id: conversationId }),
       chrome.runtime.sendMessage({ type: 'GET_CONVERSATION_RAW', id: conversationId })
     ]);
-    
-    if (mdResponse.md && rawResponse.html) {
-      // Populate content
+
+    console.log('Conversation responses:', { mdResponse, rawResponse });
+
+    if (mdResponse.error || rawResponse.error) {
+      throw new Error(`Backend error: md=${mdResponse.error || 'none'}, raw=${rawResponse.error || 'none'}`);
+    }
+
+    if (!mdResponse.md && !rawResponse.html) {
+      throw new Error('No content available for this conversation');
+    }
+
+    // Populate content - at least one should exist
+    if (mdResponse.md) {
       document.getElementById('modalMarkdown').value = mdResponse.md;
       document.getElementById('modalRendered').innerHTML = renderHtmlFromMd(mdResponse.md);
-      document.getElementById('modalRaw').innerHTML = rawResponse.html;
-      
-      // Update title
-      const conversation = modalState.filteredConversations[modalState.currentIndex];
-      document.getElementById('modalConversationTitle').textContent = conversation?.title || 'Conversation';
     }
+
+    if (rawResponse.html) {
+      document.getElementById('modalRaw').innerHTML = rawResponse.html;
+    } else if (mdResponse.md) {
+      // Fallback to markdown if raw view failed
+      document.getElementById('modalRaw').innerHTML = renderHtmlFromMd(mdResponse.md);
+    }
+
+    // Update title
+    const conversation = modalState.filteredConversations[modalState.currentIndex];
+    document.getElementById('modalConversationTitle').textContent = conversation?.title || 'Conversation';
   } catch (error) {
     console.error('Failed to load conversation:', error);
     document.getElementById('modalRaw').innerHTML = `<div class="error">Failed to load conversation: ${error.message}</div>`;

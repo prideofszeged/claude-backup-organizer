@@ -518,19 +518,24 @@ function conversationToRawView(conv) {
       <span>Model: ${escapeHtml(conv?.model || 'Unknown')}</span>
     </div>
   </div>`;
-  
+
+  if (!msgs || msgs.length === 0) {
+    html += `<div class="message"><p style="color: var(--muted);">No messages in this conversation.</p></div>`;
+    return html;
+  }
+
   for (const m of msgs) {
     const role = m.sender || m.role || 'assistant';
     const isHuman = role === 'human';
     const parts = m.content || [];
-    
+
     html += `<div class="message ${isHuman ? 'human-message' : 'assistant-message'}">
       <div class="message-header">
         <span class="role-badge ${role}">${isHuman ? 'You' : 'Claude'}</span>
         <span class="timestamp">${new Date(m.created_at || m.updated_at || '').toLocaleString()}</span>
       </div>
       <div class="message-content">`;
-    
+
     // Handle thinking content first (if present)
     const thinkingPart = parts.find(p => p.type === 'thinking');
     if (thinkingPart && thinkingPart.thinking) {
@@ -545,19 +550,19 @@ function conversationToRawView(conv) {
     if (textPart && textPart.text) {
       html += `<div class="message-text">${escapeHtml(textPart.text).replace(/\n/g, '<br>')}</div>`;
     }
-    
-    // Handle other content types (tools, etc.)
+
+    // Handle other content types (tools, etc.) with proper escaping
     const otherParts = parts.filter(p => p.type && p.type !== 'text' && p.type !== 'thinking');
     for (const part of otherParts) {
       html += `<details class="tool-section">
-        <summary>🔧 ${part.type}</summary>
-        <pre class="tool-content">${JSON.stringify(part, null, 2)}</pre>
+        <summary>🔧 ${escapeHtml(part.type)}</summary>
+        <pre class="tool-content">${escapeHtml(JSON.stringify(part, null, 2))}</pre>
       </details>`;
     }
-    
+
     html += `</div></div>`;
   }
-  
+
   return html;
 }
 
