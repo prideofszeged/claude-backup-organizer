@@ -1,3 +1,33 @@
+// Standardized error handling
+const errorMessages = {
+  folderNesting: 'Maximum folder nesting level (3) reached. Cannot create subfolders deeper than this.',
+  folderEmpty: 'Folder name cannot be empty.',
+  folderTooLong: 'Folder name is too long (max 100 characters).',
+  folderInvalidChars: 'Folder name contains invalid characters: < > : " | ? * / \\',
+  folderExists: 'Folder with this name already exists.',
+  saveFailed: 'Failed to save. Check if extension is properly loaded.',
+  exportFailed: 'Export failed. Check if extension is properly loaded.',
+  deleteFailed: 'Delete failed. Check if extension is properly loaded.',
+  moveFailed: 'Failed to move conversation. Check if extension is properly loaded.',
+  syncFailed: 'Sync failed. Check if extension is properly loaded.',
+  testFailed: 'Test failed. Check if extension is properly loaded.'
+};
+
+function showError(messageKey, detail = '') {
+  const message = errorMessages[messageKey] || 'An error occurred.';
+  const fullMessage = detail ? `${message}\n\nDetails: ${detail}` : message;
+  alert(fullMessage);
+  console.error(messageKey, detail);
+}
+
+function showWarning(message) {
+  alert('⚠️ ' + message);
+}
+
+function showSuccess(message) {
+  alert('✓ ' + message);
+}
+
 // State management
 let conversations = [];
 let folders = { 'Inbox': { children: {}, color: '#61dafb' } };
@@ -6,6 +36,7 @@ let selectedConversations = new Set();
 let currentFolder = null;
 let lastSelectedId = null; // For shift-click range selection
 let filteredConversationsList = []; // Track current filtered list for range selection
+let expandedFolders = new Set(['Inbox']); // Track which folders are expanded
 
 function strIncludes(hay, needle) {
   return (hay || "").toLowerCase().includes((needle || "").toLowerCase());
@@ -108,17 +139,28 @@ function getAllFolderPaths() {
 function renderFolderTree() {
   const container = document.getElementById('folderTree');
   container.innerHTML = '';
-  
+
   function renderFolderItem(name, folderObj, path, level = 0) {
     const div = document.createElement('div');
     div.className = `tree-item ${currentFolder === path ? 'selected' : ''}`;
     div.style.marginLeft = `${level * 16}px`;
-    
+
     const count = conversations.filter(c => c.folder === path).length;
-    
+    const hasChildren = folderObj.children && Object.keys(folderObj.children).length > 0;
+    const isExpanded = expandedFolders.has(path);
+
     const folderColor = folderObj.color || '#61dafb';
+
+    // Build expand button if has children
+    const expandBtn = hasChildren ? `
+      <button class="tree-expand" data-folder-path="${path}" title="${isExpanded ? 'Collapse' : 'Expand'}">
+        ${isExpanded ? '▼' : '▶'}
+      </button>
+    ` : '<span class="tree-expand"></span>';
+
     div.innerHTML = `
       <div class="folder-name">
+        ${expandBtn}
         <span class="folder-icon">
           <span class="folder-color-indicator" style="background-color: ${folderColor}"></span>📁
         </span>
@@ -131,7 +173,21 @@ function renderFolderTree() {
         </div>
       </div>
     `;
-    
+
+    // Add expand/collapse handler
+    const expandBtn_elem = div.querySelector('.tree-expand');
+    if (expandBtn_elem && hasChildren) {
+      expandBtn_elem.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (expandedFolders.has(path)) {
+          expandedFolders.delete(path);
+        } else {
+          expandedFolders.add(path);
+        }
+        renderFolderTree();
+      });
+    }
+
     // Add event listeners
     const addBtn = div.querySelector('.add-subfolder-btn');
     if (addBtn) {
@@ -140,7 +196,7 @@ function renderFolderTree() {
         addSubfolder(path);
       });
     }
-    
+
     const renameBtn = div.querySelector('.rename-folder-btn');
     if (renameBtn) {
       renameBtn.addEventListener('click', (e) => {
@@ -158,8 +214,8 @@ function renderFolderTree() {
     }
 
     div.addEventListener('click', (e) => {
-      if (e.target.classList.contains('small-btn')) return;
-      selectFolder(path);
+      if (e.target.classList.contains('small-btn') || e.target.classList.contains('tree-expand')) return;
+      selectFolder(path, e);
     });
 
     // Add drag-over handlers for drop target
@@ -187,9 +243,9 @@ function renderFolderTree() {
     });
 
     container.appendChild(div);
-    
-    // Render children
-    if (folderObj.children) {
+
+    // Render children only if expanded
+    if (folderObj.children && isExpanded) {
       Object.keys(folderObj.children).forEach(childName => {
         const childPath = path === 'Inbox' ? childName : `${path}/${childName}`;
         renderFolderItem(childName, folderObj.children[childName], childPath, level + 1);
@@ -425,7 +481,7 @@ function getContrastColor(bgColor) {
 }
 
 // Event handlers
-function selectFolder(path) {
+function selectFolder(path, event) {
   currentFolder = path;
   document.querySelectorAll('.tree-item').forEach(el => el.classList.remove('selected'));
   event.target.closest('.tree-item').classList.add('selected');
@@ -446,16 +502,30 @@ function addSubfolder(parentPath) {
   // Check depth limit (max 3 levels)
   const depth = parentPath === 'Inbox' ? 1 : parentPath.split('/').length + 1;
   if (depth > 3) {
-    alert('Maximum folder nesting level (3) reached. Cannot create subfolders deeper than this.');
+    showError('folderNesting');
     return;
   }
 
   const name = prompt('Folder name:');
   if (!name) return;
 
+  // Validate folder name
+  if (name.trim().length === 0) {
+    showError('folderEmpty');
+    return;
+  }
+  if (name.length > 100) {
+    showError('folderTooLong');
+    return;
+  }
+  if (/[<>:"|?*\/\\]/.test(name)) {
+    showError('folderInvalidChars');
+    return;
+  }
+
   const fullPath = parentPath === 'Inbox' ? name : `${parentPath}/${name}`;
   if (getAllFolderPaths().includes(fullPath)) {
-    alert('Folder already exists');
+    showError('folderExists');
     return;
   }
 
@@ -467,6 +537,21 @@ function addSubfolder(parentPath) {
 function renameFolder(path) {
   const newName = prompt(`Rename folder "${path}" to:`, path.split('/').pop());
   if (!newName) return;
+
+  // Validate folder name
+  if (newName.trim().length === 0) {
+    showError('folderEmpty');
+    return;
+  }
+  if (newName.length > 100) {
+    showError('folderTooLong');
+    return;
+  }
+  if (/[<>:"|?*\/\\]/.test(newName)) {
+    showError('folderInvalidChars');
+    return;
+  }
+
   if (newName === path.split('/').pop()) return; // No change
 
   // Check if new name already exists at this level
@@ -476,7 +561,7 @@ function renameFolder(path) {
 
   const newPath = parentPath === 'Inbox' ? newName : `${parentPath}/${newName}`;
   if (allFolderPaths.includes(newPath)) {
-    alert('Folder with this name already exists');
+    showError('folderExists');
     return;
   }
 
@@ -504,7 +589,9 @@ function renameFolder(path) {
     if (conv.folder === path) {
       conv.folder = newPath;
     } else if (conv.folder?.startsWith(path + '/')) {
-      conv.folder = conv.folder.replace(path + '/', newPath + '/');
+      // Use slice instead of replace to avoid substring matching issues
+      // e.g., renaming "Work" to "Working" shouldn't affect "Working/Projects"
+      conv.folder = newPath + conv.folder.slice(path.length);
     }
   });
 
@@ -651,16 +738,25 @@ async function openConversationModal(conversationId) {
   modalState.currentIndex = modalState.filteredConversations.findIndex(c => c.id === conversationId);
   modalState.currentConversationId = conversationId;
   modalState.isOpen = true;
-  
-  // Show modal
+
+  // Show modal with loading state
   const modal = document.getElementById('conversationModal');
   modal.style.display = 'flex';
   setTimeout(() => modal.classList.add('show'), 10);
-  
+
+  // Show loading indicator
+  const rawView = document.getElementById('modalRaw');
+  const renderedView = document.getElementById('modalRendered');
+  const markdownView = document.getElementById('modalMarkdown');
+
+  rawView.innerHTML = '<div class="loading"><span>Loading conversation...</span><div class="spinner"></div></div>';
+  renderedView.innerHTML = '<div class="loading"><span>Loading conversation...</span><div class="spinner"></div></div>';
+  markdownView.value = '';
+
   // Load conversation content
   await loadConversationInModal(conversationId);
   updateModalNavigation();
-  
+
   // Focus management
   document.getElementById('closeConversationModal').focus();
 }
@@ -672,17 +768,33 @@ async function loadConversationInModal(conversationId) {
       chrome.runtime.sendMessage({ type: 'GET_CONVERSATION_MD', id: conversationId }),
       chrome.runtime.sendMessage({ type: 'GET_CONVERSATION_RAW', id: conversationId })
     ]);
-    
-    if (mdResponse.md && rawResponse.html) {
-      // Populate content
+
+    console.log('Conversation responses:', { mdResponse, rawResponse });
+
+    if (mdResponse.error || rawResponse.error) {
+      throw new Error(`Backend error: md=${mdResponse.error || 'none'}, raw=${rawResponse.error || 'none'}`);
+    }
+
+    if (!mdResponse.md && !rawResponse.html) {
+      throw new Error('No content available for this conversation');
+    }
+
+    // Populate content - at least one should exist
+    if (mdResponse.md) {
       document.getElementById('modalMarkdown').value = mdResponse.md;
       document.getElementById('modalRendered').innerHTML = renderHtmlFromMd(mdResponse.md);
-      document.getElementById('modalRaw').innerHTML = rawResponse.html;
-      
-      // Update title
-      const conversation = modalState.filteredConversations[modalState.currentIndex];
-      document.getElementById('modalConversationTitle').textContent = conversation?.title || 'Conversation';
     }
+
+    if (rawResponse.html) {
+      document.getElementById('modalRaw').innerHTML = rawResponse.html;
+    } else if (mdResponse.md) {
+      // Fallback to markdown if raw view failed
+      document.getElementById('modalRaw').innerHTML = renderHtmlFromMd(mdResponse.md);
+    }
+
+    // Update title
+    const conversation = modalState.filteredConversations[modalState.currentIndex];
+    document.getElementById('modalConversationTitle').textContent = conversation?.title || 'Conversation';
   } catch (error) {
     console.error('Failed to load conversation:', error);
     document.getElementById('modalRaw').innerHTML = `<div class="error">Failed to load conversation: ${error.message}</div>`;
@@ -805,10 +917,9 @@ function renderHtmlFromMd(md) {
 async function exportConversation(id) {
   try {
     const res = await chrome.runtime.sendMessage({ type: 'EXPORT_CONVERSATION_MD', id });
-    if (res?.ok === false) alert(res.error || 'Export failed');
+    if (res?.ok === false) showError('exportFailed', res.error);
   } catch (e) {
-    console.error('Export error:', e);
-    alert('Export failed. Check if extension is properly loaded.');
+    showError('exportFailed', e.message);
   }
 }
 
@@ -832,10 +943,10 @@ async function deleteConversationLocal(id) {
       renderFolderTree();
       renderConversations();
     } else {
-      alert(res.error || 'Failed to remove conversation');
+      showError('deleteFailed', res.error);
     }
   } catch (e) {
-    alert('Delete failed. Check if extension is properly loaded.');
+    showError('deleteFailed', e.message);
   }
 }
 
@@ -870,10 +981,10 @@ async function deleteConversationWeb(id) {
       renderFolderTree();
       renderConversations();
     } else {
-      alert(res.error || 'Failed to delete conversation from Claude.ai');
+      showError('deleteFailed', res.error);
     }
   } catch (e) {
-    alert('Delete failed. Check if extension is properly loaded.');
+    showError('deleteFailed', e.message);
   }
 }
 
@@ -1019,18 +1130,95 @@ function changeFolderColor(folderPath) {
   colorInput.click();
 }
 
+// Progress indicator helpers
+function showProgress(statusText, current, total) {
+  const progressSection = document.getElementById('syncProgress');
+  const statusTextEl = document.getElementById('syncStatusText');
+  const progressTextEl = document.getElementById('syncProgressText');
+  const progressFill = document.getElementById('progressFill');
+
+  progressSection.style.display = 'block';
+  statusTextEl.textContent = statusText;
+
+  if (total > 0) {
+    const percentage = Math.round((current / total) * 100);
+    progressTextEl.textContent = `${current}/${total} (${percentage}%)`;
+    progressFill.style.width = `${percentage}%`;
+  } else {
+    progressTextEl.textContent = 'Preparing...';
+    progressFill.style.width = '0%';
+  }
+}
+
+function hideProgress(delay = 2000) {
+  setTimeout(() => {
+    const progressSection = document.getElementById('syncProgress');
+    progressSection.style.display = 'none';
+  }, delay);
+}
+
 // Quick bulk delete function
 async function quickDeleteSelected() {
   const count = selectedConversations.size;
+
+  // Get user's delete settings
+  const settings = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+
+  let deleteFromWeb = false;
+
+  // Determine delete mode based on settings
+  if (settings.deleteMode === 'web-default') {
+    deleteFromWeb = true;
+    if (!confirm(`Permanently delete ${count} conversation${count > 1 ? 's' : ''} from Claude.ai?\n\nThis cannot be undone.`)) {
+      return;
+    }
+  } else if (settings.deleteMode === 'web-confirm') {
+    // Ask user which mode
+    const result = confirm(
+      `Delete ${count} conversation${count > 1 ? 's' : ''}?\n\n` +
+      `OK = Delete from Claude.ai permanently ⚠️\n` +
+      `Cancel = Remove from library only (can re-sync)`
+    );
+    deleteFromWeb = result;
+  } else {
+    // local-only mode
+    if (!confirm(`Remove ${count} conversation${count > 1 ? 's' : ''} from library?\n\nYou can re-sync from Claude.ai to restore.`)) {
+      return;
+    }
+  }
+
+  // Show export reminder if deleting from web
+  if (deleteFromWeb && settings.showExportReminder) {
+    const exportFirst = confirm(
+      `Would you like to export these ${count} conversations before permanently deleting them?`
+    );
+    if (exportFirst) {
+      showProgress('Exporting conversations...', 0, count);
+      let exported = 0;
+      for (const id of selectedConversations) {
+        await exportConversation(id);
+        exported++;
+        showProgress('Exporting conversations...', exported, count);
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+
+  // Show initial progress
+  const actionText = deleteFromWeb ? 'Deleting from Claude.ai' : 'Removing from library';
+  showProgress(`${actionText}...`, 0, count);
+
+  // Perform deletion
   let successCount = 0;
   let errorCount = 0;
+  let current = 0;
 
   for (const id of selectedConversations) {
     try {
       const res = await chrome.runtime.sendMessage({
         type: 'DELETE_CONVERSATION',
         id,
-        options: { deleteFromWeb: false }
+        options: { deleteFromWeb }
       });
       if (res?.ok) {
         successCount++;
@@ -1040,6 +1228,10 @@ async function quickDeleteSelected() {
     } catch (e) {
       errorCount++;
     }
+
+    // Update progress after each deletion
+    current++;
+    showProgress(`${actionText}...`, current, count);
   }
 
   await loadData();
@@ -1047,11 +1239,19 @@ async function quickDeleteSelected() {
   renderFolderTree();
   renderConversations();
 
-  let message = `${successCount} conversations deleted`;
+  // Show completion
+  const action = deleteFromWeb ? 'deleted from Claude.ai' : 'removed from library';
+  showProgress(`Complete! ${successCount} ${action}`, count, count);
+
+  // Hide progress bar after showing completion
+  hideProgress(3000);
+
+  // Show summary if there were errors
   if (errorCount > 0) {
-    message += `\n${errorCount} failed`;
+    setTimeout(() => {
+      alert(`${successCount} conversations ${action}\n${errorCount} failed`);
+    }, 3000);
   }
-  alert(message);
 }
 
 // Progress handling
@@ -1192,7 +1392,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   
   // Event listeners
-  document.getElementById('q').addEventListener('input', renderConversations);
+  // Debounce search input to avoid re-rendering on every keystroke
+  let searchTimeout;
+  document.getElementById('q').addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => renderConversations(), 150);
+  });
   document.getElementById('sortBy').addEventListener('change', renderConversations);
   
   document.getElementById('addFolder').addEventListener('click', () => {
@@ -1211,12 +1416,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderConversations();
   });
 
-  // Quick action buttons
+  // Quick action buttons (confirmation handled in function based on settings)
   document.getElementById('quickDelete')?.addEventListener('click', async () => {
-    const count = selectedConversations.size;
-    if (confirm(`Delete ${count} conversation${count > 1 ? 's' : ''}?`)) {
-      await quickDeleteSelected();
-    }
+    await quickDeleteSelected();
   });
 
   document.getElementById('clearSelection')?.addEventListener('click', () => {
@@ -1233,41 +1435,38 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       const response = await chrome.runtime.sendMessage({ type: 'SYNC_INCREMENTAL' });
       if (response?.ok === false) {
-        alert(`Sync error: ${response.error}`);
+        showError('syncFailed', response.error);
       }
     } catch (e) {
-      console.error('Sync error:', e);
-      alert('Sync failed. Check if extension is properly loaded.');
+      showError('syncFailed', e.message);
     }
   });
-  
+
   document.getElementById('syncFull')?.addEventListener('click', async () => {
     try {
       // Clear any previous progress
       document.getElementById('syncProgress').style.display = 'none';
       document.getElementById('syncDetails').innerHTML = '';
-      
+
       const response = await chrome.runtime.sendMessage({ type: 'SYNC_FULL' });
       if (response?.ok === false) {
-        alert(`Sync error: ${response.error}`);
+        showError('syncFailed', response.error);
       }
     } catch (e) {
-      console.error('Sync error:', e);
-      alert('Sync failed. Check if extension is properly loaded.');
+      showError('syncFailed', e.message);
     }
   });
-  
+
   document.getElementById('syncTest')?.addEventListener('click', async () => {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'SYNC_TEST' });
       if (response?.ok === false) {
-        alert(`Test error: ${response.error}`);
+        showError('testFailed', response.error);
       } else {
-        alert('Test successful!');
+        showSuccess('Test successful!');
       }
     } catch (e) {
-      console.error('Test error:', e);
-      alert('Test failed. Check if extension is properly loaded.');
+      showError('testFailed', e.message);
     }
   });
   
@@ -1390,13 +1589,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    // Delete: Quick delete selected with confirmation
+    // Delete: Quick delete selected (confirmation handled in function based on settings)
     if (e.key === 'Delete' && selectedConversations.size > 0 && !modalState.isOpen) {
       e.preventDefault();
-      const count = selectedConversations.size;
-      if (confirm(`Delete ${count} conversation${count > 1 ? 's' : ''}?`)) {
-        quickDeleteSelected();
-      }
+      quickDeleteSelected();
       return;
     }
   });
@@ -1430,7 +1626,80 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Modal backdrop click to close
   document.querySelector('.modal-backdrop')?.addEventListener('click', closeConversationModal);
-  
+
+  // Folder tree keyboard navigation
+  document.addEventListener('keydown', (e) => {
+    if (modalState.isOpen) return; // Don't navigate folder tree when modal is open
+
+    const folderTree = document.getElementById('folderTree');
+    if (!folderTree) return;
+
+    const treeItems = Array.from(folderTree.querySelectorAll('.tree-item'));
+    if (treeItems.length === 0) return;
+
+    // Find currently focused/selected folder
+    let focusedItem = folderTree.querySelector('.tree-item.focused');
+    if (!focusedItem && currentFolder !== null) {
+      focusedItem = treeItems.find(item => item.textContent.includes(currentFolder));
+    }
+    if (!focusedItem) focusedItem = treeItems[0];
+
+    const currentIndex = treeItems.indexOf(focusedItem);
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        if (currentIndex < treeItems.length - 1) {
+          treeItems[currentIndex].classList.remove('focused');
+          treeItems[currentIndex + 1].classList.add('focused');
+          treeItems[currentIndex + 1].scrollIntoView({ block: 'nearest' });
+        }
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        if (currentIndex > 0) {
+          treeItems[currentIndex].classList.remove('focused');
+          treeItems[currentIndex - 1].classList.add('focused');
+          treeItems[currentIndex - 1].scrollIntoView({ block: 'nearest' });
+        }
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        // Expand folder or move to first child
+        const folderPath = focusedItem.querySelector('[data-folder-path]')?.dataset.folderPath;
+        if (folderPath && !expandedFolders.has(folderPath)) {
+          const hasChildren = focusedItem.querySelector('.tree-expand[data-folder-path]');
+          if (hasChildren) {
+            expandedFolders.add(folderPath);
+            renderFolderTree();
+          }
+        } else if (currentIndex < treeItems.length - 1) {
+          // Move to next visible item
+          treeItems[currentIndex].classList.remove('focused');
+          treeItems[currentIndex + 1].classList.add('focused');
+        }
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        // Collapse folder or move to parent
+        const folderPathLeft = focusedItem.querySelector('[data-folder-path]')?.dataset.folderPath;
+        if (folderPathLeft && expandedFolders.has(folderPathLeft)) {
+          expandedFolders.delete(folderPathLeft);
+          renderFolderTree();
+        } else if (currentIndex > 0) {
+          // Move to previous visible item
+          treeItems[currentIndex].classList.remove('focused');
+          treeItems[currentIndex - 1].classList.add('focused');
+        }
+        break;
+      case 'Enter':
+        e.preventDefault();
+        // Select the focused folder
+        focusedItem.click();
+        break;
+    }
+  });
+
   // Bulk operations
   document.getElementById('bulkOperations')?.addEventListener('click', () => {
     if (selectedConversations.size === 0) {
@@ -1447,37 +1716,88 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('bulkMoveToFolder')?.addEventListener('click', async () => {
     const folderPath = prompt('Move to folder:', 'Inbox');
     if (!folderPath) return;
-    
+
+    showProgress('Moving conversations...', 0, selectedConversations.size);
+    let successCount = 0;
+    let current = 0;
+
     for (const id of selectedConversations) {
-      const conv = conversations.find(c => c.id === id);
-      if (conv) conv.folder = folderPath;
+      try {
+        // Use UPDATE_META to persist changes to background
+        const res = await chrome.runtime.sendMessage({
+          type: 'UPDATE_META',
+          id,
+          payload: { folder: folderPath }
+        });
+
+        if (res?.ok) {
+          successCount++;
+          const conv = conversations.find(c => c.id === id);
+          if (conv) conv.folder = folderPath;
+        }
+      } catch (e) {
+        console.error('Error moving conversation:', e);
+      }
+
+      current++;
+      showProgress('Moving conversations...', current, selectedConversations.size);
     }
+
     await saveData();
     selectedConversations.clear();
+    hideProgress(2000);
     document.getElementById('bulkModal').style.display = 'none';
     renderFolderTree();
     renderConversations();
+
+    alert(`${successCount}/${selectedConversations.size} conversations moved to ${folderPath}`);
   });
   
   document.getElementById('bulkAddTags')?.addEventListener('click', async () => {
     const newTags = prompt('Add tags (comma-separated):');
     if (!newTags) return;
-    
+
     const tagsToAdd = newTags.split(',').map(s => s.trim()).filter(Boolean);
+    showProgress('Adding tags to conversations...', 0, selectedConversations.size);
+    let successCount = 0;
+    let current = 0;
+
     for (const id of selectedConversations) {
-      const conv = conversations.find(c => c.id === id);
-      if (conv) {
-        conv.tags = conv.tags || [];
-        tagsToAdd.forEach(tag => {
-          if (!conv.tags.includes(tag)) conv.tags.push(tag);
-          if (!tags[tag]) tags[tag] = '#61dafb';
-        });
+      try {
+        const conv = conversations.find(c => c.id === id);
+        if (conv) {
+          conv.tags = conv.tags || [];
+          tagsToAdd.forEach(tag => {
+            if (!conv.tags.includes(tag)) conv.tags.push(tag);
+            if (!tags[tag]) tags[tag] = '#61dafb';
+          });
+
+          // Use UPDATE_META to persist tag changes
+          const res = await chrome.runtime.sendMessage({
+            type: 'UPDATE_META',
+            id,
+            payload: { tags: conv.tags }
+          });
+
+          if (res?.ok) {
+            successCount++;
+          }
+        }
+      } catch (e) {
+        console.error('Error adding tags:', e);
       }
+
+      current++;
+      showProgress('Adding tags to conversations...', current, selectedConversations.size);
     }
+
     await saveData();
     selectedConversations.clear();
+    hideProgress(2000);
     document.getElementById('bulkModal').style.display = 'none';
     renderConversations();
+
+    alert(`Tags added to ${successCount}/${selectedConversations.size} conversations`);
   });
   
   document.getElementById('bulkExport')?.addEventListener('click', async () => {

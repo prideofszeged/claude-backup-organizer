@@ -48,17 +48,63 @@ async function broadcastProgress(progress) {
   }
 }
 
-// Lightweight in-memory conversation cache (per-session)
-const convCache = new Map(); // id -> { updatedAt, data }
-function cacheSet(id, updatedAt, data) {
-  try {
-    convCache.set(id, { updatedAt, data });
-    if (convCache.size > 200) {
-      const firstKey = convCache.keys().next().value;
-      convCache.delete(firstKey);
-    }
-  } catch (_) { /* ignore */ }
+// Lightweight in-memory LRU conversation cache (per-session)
+// Maintains insertion order in Map and tracks access order via touch operations
+class LRUCache {
+  constructor(maxSize = 200) {
+    this.cache = new Map(); // id -> { updatedAt, data, accessedAt }
+    this.maxSize = maxSize;
+  }
+
+  set(id, updatedAt, data) {
+    try {
+      // Remove if exists (to update order)
+      this.cache.delete(id);
+      // Add to end (most recently used)
+      this.cache.set(id, { updatedAt, data, accessedAt: Date.now() });
+      // Evict least recently used if over capacity
+      if (this.cache.size > this.maxSize) {
+        // Find the least recently accessed item
+        let lruKey = null;
+        let lruTime = Infinity;
+        for (const [key, value] of this.cache.entries()) {
+          if (value.accessedAt < lruTime) {
+            lruTime = value.accessedAt;
+            lruKey = key;
+          }
+        }
+        if (lruKey) this.cache.delete(lruKey);
+      }
+    } catch (_) { /* ignore */ }
+  }
+
+  get(id) {
+    try {
+      const entry = this.cache.get(id);
+      if (entry) {
+        // Update access time on read (mark as recently used)
+        entry.accessedAt = Date.now();
+        return entry;
+      }
+      return null;
+    } catch (_) { /* ignore */ }
+  }
+
+  clear() {
+    this.cache.clear();
+  }
+
+  size() {
+    return this.cache.size;
+  }
 }
+
+const convCache = new LRUCache(200);
+
+function cacheSet(id, updatedAt, data) {
+  convCache.set(id, updatedAt, data);
+}
+
 function cacheGet(id) {
   return convCache.get(id);
 }
@@ -339,7 +385,12 @@ async function incrementalSync() {
       };
       indexMap.set(item.id, record);
       cacheSet(item.id, record.updatedAt, full);
-      try { await dbPutConv(item.id, record.updatedAt, full); } catch (_) { /* ignore */ }
+      try {
+        await dbPutConv(item.id, record.updatedAt, full);
+      } catch (e) {
+        // IndexedDB unavailable - log but continue with in-memory cache
+        await logDebug('warn', `IndexedDB cache failed for ${item.id}: ${e.message}. Using in-memory cache only.`);
+      }
       downloaded++;
       
       // Broadcast progress every conversation
@@ -457,8 +508,13 @@ async function deleteConversation(id, options = {}) {
     index.splice(idx, 1);
     delete byId[id];
     convCache.delete(id);
-    
-    try { await dbDeleteConv(id); } catch (_) { /* ignore */ }
+
+    try {
+      await dbDeleteConv(id);
+    } catch (e) {
+      // IndexedDB unavailable - log but continue
+      await logDebug('warn', `IndexedDB delete failed for ${id}: ${e.message}`);
+    }
     
     await setIndex({ index, byId, lastSync });
     return { ok: true, deletedFromWeb: deleteFromWeb };
@@ -488,58 +544,76 @@ async function exportIndexCsv() {
   return { ok: true };
 }
 
+// Helper function to escape HTML to prevent XSS
+function escapeHtml(text) {
+  if (!text) return '';
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return String(text).replace(/[&<>"']/g, char => map[char]);
+}
+
 function conversationToRawView(conv) {
   const title = normalizeTitle(conv?.name);
   const msgs = conv?.chat_messages || conv?.tree_state?.messages || conv?.messages || [];
-  
+
   let html = `<div class="conversation-header">
-    <h1>${title}</h1>
+    <h1>${escapeHtml(title)}</h1>
     <div class="conversation-meta">
       <span>Created: ${new Date(conv?.created_at || '').toLocaleString()}</span>
       <span>Updated: ${new Date(conv?.updated_at || '').toLocaleString()}</span>
-      <span>Model: ${conv?.model || 'Unknown'}</span>
+      <span>Model: ${escapeHtml(conv?.model || 'Unknown')}</span>
     </div>
   </div>`;
-  
+
+  if (!msgs || msgs.length === 0) {
+    html += `<div class="message"><p style="color: var(--muted);">No messages in this conversation.</p></div>`;
+    return html;
+  }
+
   for (const m of msgs) {
     const role = m.sender || m.role || 'assistant';
     const isHuman = role === 'human';
     const parts = m.content || [];
-    
+
     html += `<div class="message ${isHuman ? 'human-message' : 'assistant-message'}">
       <div class="message-header">
         <span class="role-badge ${role}">${isHuman ? 'You' : 'Claude'}</span>
         <span class="timestamp">${new Date(m.created_at || m.updated_at || '').toLocaleString()}</span>
       </div>
       <div class="message-content">`;
-    
+
     // Handle thinking content first (if present)
     const thinkingPart = parts.find(p => p.type === 'thinking');
     if (thinkingPart && thinkingPart.thinking) {
       html += `<details class="thinking-section">
         <summary>🤔 Thinking</summary>
-        <div class="thinking-content">${thinkingPart.thinking.replace(/\n/g, '<br>')}</div>
+        <div class="thinking-content">${escapeHtml(thinkingPart.thinking).replace(/\n/g, '<br>')}</div>
       </details>`;
     }
-    
+
     // Handle main text content
     const textPart = parts.find(p => p.type === 'text') || parts.find(p => p.text);
     if (textPart && textPart.text) {
-      html += `<div class="message-text">${textPart.text.replace(/\n/g, '<br>')}</div>`;
+      html += `<div class="message-text">${escapeHtml(textPart.text).replace(/\n/g, '<br>')}</div>`;
     }
-    
-    // Handle other content types (tools, etc.)
+
+    // Handle other content types (tools, etc.) with proper escaping
     const otherParts = parts.filter(p => p.type && p.type !== 'text' && p.type !== 'thinking');
     for (const part of otherParts) {
       html += `<details class="tool-section">
-        <summary>🔧 ${part.type}</summary>
-        <pre class="tool-content">${JSON.stringify(part, null, 2)}</pre>
+        <summary>🔧 ${escapeHtml(part.type)}</summary>
+        <pre class="tool-content">${escapeHtml(JSON.stringify(part, null, 2))}</pre>
       </details>`;
     }
-    
+
     html += `</div></div>`;
   }
-  
+
   return html;
 }
 
@@ -576,14 +650,22 @@ async function getConversationCached(id, opts = {}) {
       cacheSet(id, p.updatedAt, p.data);
       return p.data;
     }
-  } catch (_) { /* ignore IDB errors */ }
+  } catch (e) {
+    // IndexedDB unavailable - log and fallback to fetch
+    await logDebug('warn', `IndexedDB read failed for ${id}: ${e.message}. Fetching from Claude.ai...`);
+  }
 
   // Fetch fresh and update caches
   const orgId = await getOrgId(opts);
   const conv = await getConversation(orgId, id, opts);
   const updatedAt = conv?.updated_at || conv?.updatedAt || meta?.updatedAt || null;
   cacheSet(id, updatedAt, conv);
-  try { await dbPutConv(id, updatedAt, conv); } catch (_) { /* ignore */ }
+  try {
+    await dbPutConv(id, updatedAt, conv);
+  } catch (e) {
+    // IndexedDB unavailable - log but continue with in-memory cache
+    await logDebug('warn', `IndexedDB put failed for ${id}: ${e.message}. Using in-memory cache only.`);
+  }
   return conv;
 }
 

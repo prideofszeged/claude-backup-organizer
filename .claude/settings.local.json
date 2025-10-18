@@ -1,12 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find:*)",
-      "Read(C:\\Users\\stmad\\Downloads\\claude-backup/**)",
-      "Read(C:\\Users\\stmad\\Downloads\\claude-backup\\2025-10-17T01-40-00-142Z/**)",
-      "Read(C:\\Users\\stmad\\Downloads\\claude-backup\\2025-10-17T01-40-00-142Z/**)",
-      "Read(C:\\Users\\stmad\\Downloads\\claude-backup\\2025-10-17T01-40-00-142Z/**)",
-      "Read(C:\\Users\\stmad\\Downloads\\claude-backup\\2025-10-17T01-40-00-142Z/**)"
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: add folder tree collapse/expand functionality\n\n- Add expandedFolders Set to track which folders are expanded\n- Add expand/collapse button (▶/▼) to folders with children\n- Show/hide children based on expansion state\n- Persist expansion state during session\n- Default Inbox to expanded on load\n- Improve tree-expand CSS for better styling and interaction\n- Add hover effects to expand/collapse buttons\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: add keyboard navigation to folder tree\n\nKeyboard shortcuts for folder tree navigation:\n- Arrow Up/Down: Navigate between folders\n- Arrow Right: Expand folder or move to next item\n- Arrow Left: Collapse folder or move to previous item\n- Enter: Select the focused folder\n\nFeatures:\n- Track focused item with .focused CSS class\n- Auto-scroll focused item into view\n- Disabled when conversation modal is open\n- Smooth transitions with visual feedback\n- Add .focused styling with accent border\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git add FIXES_COMPLETED.md)",
+      "Bash(git commit -m \"docs: add comprehensive summary of completed fixes and improvements\n\n- Document all 6 major improvements completed\n- Detail technical changes in background.js, options.js, and styles.css\n- Provide testing checklist and next steps\n- Include git log and metrics summary\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\")",
+      "Bash(git commit -m \"fix: replace document-based escapeHtml with pure JS implementation\n\nThe background service worker doesn''t have access to document API,\ncausing ''document is not defined'' error when trying to load conversations.\n\nReplace document.createElement approach with standard HTML character map\nand regex replacement. This works in service worker context while\nmaintaining the same XSS protection.\n\nFixes: Failed to load conversation: Backend error: raw=document is not defined\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\")"
     ],
     "deny": [],
     "ask": []
