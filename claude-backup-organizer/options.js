@@ -1019,18 +1019,95 @@ function changeFolderColor(folderPath) {
   colorInput.click();
 }
 
+// Progress indicator helpers
+function showProgress(statusText, current, total) {
+  const progressSection = document.getElementById('syncProgress');
+  const statusTextEl = document.getElementById('syncStatusText');
+  const progressTextEl = document.getElementById('syncProgressText');
+  const progressFill = document.getElementById('progressFill');
+
+  progressSection.style.display = 'block';
+  statusTextEl.textContent = statusText;
+
+  if (total > 0) {
+    const percentage = Math.round((current / total) * 100);
+    progressTextEl.textContent = `${current}/${total} (${percentage}%)`;
+    progressFill.style.width = `${percentage}%`;
+  } else {
+    progressTextEl.textContent = 'Preparing...';
+    progressFill.style.width = '0%';
+  }
+}
+
+function hideProgress(delay = 2000) {
+  setTimeout(() => {
+    const progressSection = document.getElementById('syncProgress');
+    progressSection.style.display = 'none';
+  }, delay);
+}
+
 // Quick bulk delete function
 async function quickDeleteSelected() {
   const count = selectedConversations.size;
+
+  // Get user's delete settings
+  const settings = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+
+  let deleteFromWeb = false;
+
+  // Determine delete mode based on settings
+  if (settings.deleteMode === 'web-default') {
+    deleteFromWeb = true;
+    if (!confirm(`Permanently delete ${count} conversation${count > 1 ? 's' : ''} from Claude.ai?\n\nThis cannot be undone.`)) {
+      return;
+    }
+  } else if (settings.deleteMode === 'web-confirm') {
+    // Ask user which mode
+    const result = confirm(
+      `Delete ${count} conversation${count > 1 ? 's' : ''}?\n\n` +
+      `OK = Delete from Claude.ai permanently ⚠️\n` +
+      `Cancel = Remove from library only (can re-sync)`
+    );
+    deleteFromWeb = result;
+  } else {
+    // local-only mode
+    if (!confirm(`Remove ${count} conversation${count > 1 ? 's' : ''} from library?\n\nYou can re-sync from Claude.ai to restore.`)) {
+      return;
+    }
+  }
+
+  // Show export reminder if deleting from web
+  if (deleteFromWeb && settings.showExportReminder) {
+    const exportFirst = confirm(
+      `Would you like to export these ${count} conversations before permanently deleting them?`
+    );
+    if (exportFirst) {
+      showProgress('Exporting conversations...', 0, count);
+      let exported = 0;
+      for (const id of selectedConversations) {
+        await exportConversation(id);
+        exported++;
+        showProgress('Exporting conversations...', exported, count);
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+
+  // Show initial progress
+  const actionText = deleteFromWeb ? 'Deleting from Claude.ai' : 'Removing from library';
+  showProgress(`${actionText}...`, 0, count);
+
+  // Perform deletion
   let successCount = 0;
   let errorCount = 0;
+  let current = 0;
 
   for (const id of selectedConversations) {
     try {
       const res = await chrome.runtime.sendMessage({
         type: 'DELETE_CONVERSATION',
         id,
-        options: { deleteFromWeb: false }
+        options: { deleteFromWeb }
       });
       if (res?.ok) {
         successCount++;
@@ -1040,6 +1117,10 @@ async function quickDeleteSelected() {
     } catch (e) {
       errorCount++;
     }
+
+    // Update progress after each deletion
+    current++;
+    showProgress(`${actionText}...`, current, count);
   }
 
   await loadData();
@@ -1047,11 +1128,19 @@ async function quickDeleteSelected() {
   renderFolderTree();
   renderConversations();
 
-  let message = `${successCount} conversations deleted`;
+  // Show completion
+  const action = deleteFromWeb ? 'deleted from Claude.ai' : 'removed from library';
+  showProgress(`Complete! ${successCount} ${action}`, count, count);
+
+  // Hide progress bar after showing completion
+  hideProgress(3000);
+
+  // Show summary if there were errors
   if (errorCount > 0) {
-    message += `\n${errorCount} failed`;
+    setTimeout(() => {
+      alert(`${successCount} conversations ${action}\n${errorCount} failed`);
+    }, 3000);
   }
-  alert(message);
 }
 
 // Progress handling
@@ -1211,12 +1300,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderConversations();
   });
 
-  // Quick action buttons
+  // Quick action buttons (confirmation handled in function based on settings)
   document.getElementById('quickDelete')?.addEventListener('click', async () => {
-    const count = selectedConversations.size;
-    if (confirm(`Delete ${count} conversation${count > 1 ? 's' : ''}?`)) {
-      await quickDeleteSelected();
-    }
+    await quickDeleteSelected();
   });
 
   document.getElementById('clearSelection')?.addEventListener('click', () => {
@@ -1390,13 +1476,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    // Delete: Quick delete selected with confirmation
+    // Delete: Quick delete selected (confirmation handled in function based on settings)
     if (e.key === 'Delete' && selectedConversations.size > 0 && !modalState.isOpen) {
       e.preventDefault();
-      const count = selectedConversations.size;
-      if (confirm(`Delete ${count} conversation${count > 1 ? 's' : ''}?`)) {
-        quickDeleteSelected();
-      }
+      quickDeleteSelected();
       return;
     }
   });
