@@ -84,9 +84,10 @@ button:disabled:hover{
 .tree-header h3{ margin:0; font-size:16px; }
 .small-btn{ padding:4px 8px; font-size:12px; }
 .tree{ max-height:calc(100vh - 200px); overflow-y:auto; }
-.tree-item{ padding:6px 8px; margin:2px 0; border-radius:8px; cursor:pointer; user-select:none; }
+.tree-item{ padding:6px 8px; margin:2px 0; border-radius:8px; cursor:pointer; user-select:none; transition: background 0.15s; }
 .tree-item:hover{ background:#1a1f2e; }
 .tree-item.selected{ background:var(--accent); color:#000; font-weight:600; }
+.tree-item.focused{ background:#1e2a3f; border: 1px solid var(--accent); }
 .tree-item .folder-name{ display:flex; align-items:center; gap:6px; }
 .tree-item .folder-actions{ opacity:0; transition:opacity 0.2s; }
 .tree-item:hover .folder-actions{ opacity:1; }

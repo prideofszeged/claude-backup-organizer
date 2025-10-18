@@ -1626,7 +1626,80 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Modal backdrop click to close
   document.querySelector('.modal-backdrop')?.addEventListener('click', closeConversationModal);
-  
+
+  // Folder tree keyboard navigation
+  document.addEventListener('keydown', (e) => {
+    if (modalState.isOpen) return; // Don't navigate folder tree when modal is open
+
+    const folderTree = document.getElementById('folderTree');
+    if (!folderTree) return;
+
+    const treeItems = Array.from(folderTree.querySelectorAll('.tree-item'));
+    if (treeItems.length === 0) return;
+
+    // Find currently focused/selected folder
+    let focusedItem = folderTree.querySelector('.tree-item.focused');
+    if (!focusedItem && currentFolder !== null) {
+      focusedItem = treeItems.find(item => item.textContent.includes(currentFolder));
+    }
+    if (!focusedItem) focusedItem = treeItems[0];
+
+    const currentIndex = treeItems.indexOf(focusedItem);
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        if (currentIndex < treeItems.length - 1) {
+          treeItems[currentIndex].classList.remove('focused');
+          treeItems[currentIndex + 1].classList.add('focused');
+          treeItems[currentIndex + 1].scrollIntoView({ block: 'nearest' });
+        }
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        if (currentIndex > 0) {
+          treeItems[currentIndex].classList.remove('focused');
+          treeItems[currentIndex - 1].classList.add('focused');
+          treeItems[currentIndex - 1].scrollIntoView({ block: 'nearest' });
+        }
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        // Expand folder or move to first child
+        const folderPath = focusedItem.querySelector('[data-folder-path]')?.dataset.folderPath;
+        if (folderPath && !expandedFolders.has(folderPath)) {
+          const hasChildren = focusedItem.querySelector('.tree-expand[data-folder-path]');
+          if (hasChildren) {
+            expandedFolders.add(folderPath);
+            renderFolderTree();
+          }
+        } else if (currentIndex < treeItems.length - 1) {
+          // Move to next visible item
+          treeItems[currentIndex].classList.remove('focused');
+          treeItems[currentIndex + 1].classList.add('focused');
+        }
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        // Collapse folder or move to parent
+        const folderPathLeft = focusedItem.querySelector('[data-folder-path]')?.dataset.folderPath;
+        if (folderPathLeft && expandedFolders.has(folderPathLeft)) {
+          expandedFolders.delete(folderPathLeft);
+          renderFolderTree();
+        } else if (currentIndex > 0) {
+          // Move to previous visible item
+          treeItems[currentIndex].classList.remove('focused');
+          treeItems[currentIndex - 1].classList.add('focused');
+        }
+        break;
+      case 'Enter':
+        e.preventDefault();
+        // Select the focused folder
+        focusedItem.click();
+        break;
+    }
+  });
+
   // Bulk operations
   document.getElementById('bulkOperations')?.addEventListener('click', () => {
     if (selectedConversations.size === 0) {

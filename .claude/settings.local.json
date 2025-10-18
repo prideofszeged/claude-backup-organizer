@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: add folder tree collapse/expand functionality\n\n- Add expandedFolders Set to track which folders are expanded\n- Add expand/collapse button (▶/▼) to folders with children\n- Show/hide children based on expansion state\n- Persist expansion state during session\n- Default Inbox to expanded on load\n- Improve tree-expand CSS for better styling and interaction\n- Add hover effects to expand/collapse buttons\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: add folder tree collapse/expand functionality\n\n- Add expandedFolders Set to track which folders are expanded\n- Add expand/collapse button (▶/▼) to folders with children\n- Show/hide children based on expansion state\n- Persist expansion state during session\n- Default Inbox to expanded on load\n- Improve tree-expand CSS for better styling and interaction\n- Add hover effects to expand/collapse buttons\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: add keyboard navigation to folder tree\n\nKeyboard shortcuts for folder tree navigation:\n- Arrow Up/Down: Navigate between folders\n- Arrow Right: Expand folder or move to next item\n- Arrow Left: Collapse folder or move to previous item\n- Enter: Select the focused folder\n\nFeatures:\n- Track focused item with .focused CSS class\n- Auto-scroll focused item into view\n- Disabled when conversation modal is open\n- Smooth transitions with visual feedback\n- Add .focused styling with accent border\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []
