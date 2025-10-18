@@ -91,7 +91,25 @@ button:disabled:hover{
 .tree-item .folder-actions{ opacity:0; transition:opacity 0.2s; }
 .tree-item:hover .folder-actions{ opacity:1; }
 .tree-indent{ margin-left:16px; }
-.tree-expand{ cursor:pointer; width:16px; text-align:center; }
+.tree-expand{
+  cursor: pointer;
+  width: 16px;
+  text-align: center;
+  border: none;
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s;
+}
+
+.tree-expand:hover {
+  opacity: 0.7;
+}
 
 /* Conversation Grid */
 .list-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #222; }

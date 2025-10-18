@@ -36,6 +36,7 @@ let selectedConversations = new Set();
 let currentFolder = null;
 let lastSelectedId = null; // For shift-click range selection
 let filteredConversationsList = []; // Track current filtered list for range selection
+let expandedFolders = new Set(['Inbox']); // Track which folders are expanded
 
 function strIncludes(hay, needle) {
   return (hay || "").toLowerCase().includes((needle || "").toLowerCase());
@@ -138,17 +139,28 @@ function getAllFolderPaths() {
 function renderFolderTree() {
   const container = document.getElementById('folderTree');
   container.innerHTML = '';
-  
+
   function renderFolderItem(name, folderObj, path, level = 0) {
     const div = document.createElement('div');
     div.className = `tree-item ${currentFolder === path ? 'selected' : ''}`;
     div.style.marginLeft = `${level * 16}px`;
-    
+
     const count = conversations.filter(c => c.folder === path).length;
-    
+    const hasChildren = folderObj.children && Object.keys(folderObj.children).length > 0;
+    const isExpanded = expandedFolders.has(path);
+
     const folderColor = folderObj.color || '#61dafb';
+
+    // Build expand button if has children
+    const expandBtn = hasChildren ? `
+      <button class="tree-expand" data-folder-path="${path}" title="${isExpanded ? 'Collapse' : 'Expand'}">
+        ${isExpanded ? '▼' : '▶'}
+      </button>
+    ` : '<span class="tree-expand"></span>';
+
     div.innerHTML = `
       <div class="folder-name">
+        ${expandBtn}
         <span class="folder-icon">
           <span class="folder-color-indicator" style="background-color: ${folderColor}"></span>📁
         </span>
@@ -161,7 +173,21 @@ function renderFolderTree() {
         </div>
       </div>
     `;
-    
+
+    // Add expand/collapse handler
+    const expandBtn_elem = div.querySelector('.tree-expand');
+    if (expandBtn_elem && hasChildren) {
+      expandBtn_elem.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (expandedFolders.has(path)) {
+          expandedFolders.delete(path);
+        } else {
+          expandedFolders.add(path);
+        }
+        renderFolderTree();
+      });
+    }
+
     // Add event listeners
     const addBtn = div.querySelector('.add-subfolder-btn');
     if (addBtn) {
@@ -170,7 +196,7 @@ function renderFolderTree() {
         addSubfolder(path);
       });
     }
-    
+
     const renameBtn = div.querySelector('.rename-folder-btn');
     if (renameBtn) {
       renameBtn.addEventListener('click', (e) => {
@@ -188,7 +214,7 @@ function renderFolderTree() {
     }
 
     div.addEventListener('click', (e) => {
-      if (e.target.classList.contains('small-btn')) return;
+      if (e.target.classList.contains('small-btn') || e.target.classList.contains('tree-expand')) return;
       selectFolder(path, e);
     });
 
@@ -217,9 +243,9 @@ function renderFolderTree() {
     });
 
     container.appendChild(div);
-    
-    // Render children
-    if (folderObj.children) {
+
+    // Render children only if expanded
+    if (folderObj.children && isExpanded) {
       Object.keys(folderObj.children).forEach(childName => {
         const childPath = path === 'Inbox' ? childName : `${path}/${childName}`;
         renderFolderItem(childName, folderObj.children[childName], childPath, level + 1);
