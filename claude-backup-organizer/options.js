@@ -1487,6 +1487,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('exportIndex')?.addEventListener('click', async () => {
     await chrome.runtime.sendMessage({ type: 'EXPORT_INDEX' });
   });
+
+  document.getElementById('exportAll')?.addEventListener('click', async () => {
+    try {
+      // Clear any previous progress
+      document.getElementById('syncProgress').style.display = 'none';
+      document.getElementById('syncDetails').innerHTML = '';
+
+      const response = await chrome.runtime.sendMessage({ type: 'EXPORT_ALL_CONVERSATIONS' });
+      if (response?.ok === false) {
+        showError('exportFailed', response.error);
+      }
+    } catch (e) {
+      showError('exportFailed', e.message);
+    }
+  });
   
   document.getElementById('exportCsv')?.addEventListener('click', async () => {
     await chrome.runtime.sendMessage({ type: 'EXPORT_INDEX_CSV' });

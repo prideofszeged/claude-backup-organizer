@@ -636,6 +636,89 @@ async function exportConversationMd(id) {
   return { ok: true };
 }
 
+async function exportAllConversations() {
+  const { index = [] } = await chrome.storage.local.get(["index"]);
+  const allData = [];
+
+  const controller = beginSync(); // Reuse sync lock to prevent concurrent operations
+
+  try {
+    await logDebug('info', `Starting export of ${index.length} conversations`);
+    await broadcastProgress({
+      phase: 'starting',
+      message: 'Starting full export...',
+      current: 0,
+      total: index.length
+    });
+
+    // Fetch orgId once if needed for fetching missing items
+    let orgId = null;
+    try {
+      orgId = await getOrgId({ signal: controller.signal });
+    } catch (e) {
+      await logDebug('warn', 'Could not fetch Org ID, will rely on cache only or fail for missing items');
+    }
+
+    let processed = 0;
+
+    for (const item of index) {
+      if (controller.signal.aborted || activeSync.aborted) throw new Error("Aborted");
+
+      try {
+        const data = await getConversationCached(item.id, { signal: controller.signal, orgId });
+        if (data) allData.push(data);
+
+        processed++;
+        if (processed % 5 === 0) {
+           await broadcastProgress({
+            phase: 'downloading',
+            message: `Exporting: ${processed}/${index.length}`,
+            current: processed,
+            total: index.length,
+            currentItem: item.title
+          });
+        }
+      } catch (e) {
+        await logDebug('warn', `Failed to export conversation ${item.id}: ${e.message}`);
+      }
+    }
+
+    const json = JSON.stringify({
+      exportDate: new Date().toISOString(),
+      count: allData.length,
+      conversations: allData
+    }, null, 2);
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    await downloadText(`claude-backup/full-export-${timestamp}.json`, json, 'application/json', true);
+
+    await logDebug('info', `Exported ${allData.length} conversations`);
+
+    await broadcastProgress({
+      phase: 'completed',
+      message: `Export complete! ${allData.length} conversations exported.`,
+      current: allData.length,
+      total: allData.length,
+      completed: true
+    });
+
+    return { ok: true, count: allData.length };
+
+  } catch (e) {
+    await logDebug('error', `Export failed: ${e.message}`);
+    await broadcastProgress({
+      phase: 'error',
+      message: `Export failed: ${e.message}`,
+      current: 0,
+      total: 0,
+      error: true
+    });
+    throw e;
+  } finally {
+    endSync();
+  }
+}
+
 async function getConversationCached(id, opts = {}) {
   const { index = [] } = await chrome.storage.local.get(["index"]);
   const meta = index.find(x => x.id === id);
@@ -656,7 +739,7 @@ async function getConversationCached(id, opts = {}) {
   }
 
   // Fetch fresh and update caches
-  const orgId = await getOrgId(opts);
+  const orgId = opts.orgId || await getOrgId(opts);
   const conv = await getConversation(orgId, id, opts);
   const updatedAt = conv?.updated_at || conv?.updatedAt || meta?.updatedAt || null;
   cacheSet(id, updatedAt, conv);
@@ -778,6 +861,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         break;
       case "EXPORT_CONVERSATION_MD":
         sendResponse(await exportConversationMd(msg.id));
+        break;
+      case "EXPORT_ALL_CONVERSATIONS":
+        try {
+          await exportAllConversations();
+          sendResponse({ ok: true });
+        } catch (e) {
+          sendResponse({ ok: false, error: e?.message || String(e) });
+        }
         break;
       case "GET_CONVERSATION_MD":
         sendResponse({ md: await getConversationMarkdown(msg.id) });
